@@ -1,0 +1,10 @@
+{
+  "build": {
+    "env": {
+      "FLUTTER_VERSION": "3.22.0"
+    }
+  },
+  "installCommand": "curl -sSLO https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.22.0-stable.tar.xz && tar xf flutter_linux_3.22.0-stable.tar.xz",
+  "buildCommand": "./flutter/bin/flutter build web --release",
+  "outputDirectory": "build/web"
+}
