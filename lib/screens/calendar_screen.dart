@@ -118,17 +118,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             // Conta quanti cani sono nello stesso box
                             final sameBoxBookings = existingBookings.where((eb) => eb.boxId == b.boxId).toList();
                             final count = sameBoxBookings.length;
+                            final Color dogColor = dog.serviceType == 'asilo' 
+                                ? Colors.orange 
+                                : Colors.blue;
                             return Padding(
                               padding: const EdgeInsets.symmetric(vertical: 2),
                               child: Row(
                                 children: [
-                                  Icon(Icons.pets, size: 14, color: Colors.orange[700]),
+                                  Icon(Icons.pets, size: 14, color: dogColor),
                                   const SizedBox(width: 4),
                                   Text(
                                     '${dog.name} → ${box.name} (${count}/${box.capacity})',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: count >= box.capacity ? Colors.red : Colors.orange[700],
+                                      color: count >= box.capacity ? Colors.red : Colors.grey[700],
                                     ),
                                   ),
                                 ],
@@ -146,9 +149,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     value: selectedDog,
                     decoration: const InputDecoration(labelText: 'Cane *'),
                     items: dogBox.values.map((dog) {
+                      final Color dogColor = dog.serviceType == 'asilo' 
+                          ? Colors.orange 
+                          : Colors.blue;
                       return DropdownMenuItem<Dog>(
                         value: dog,
-                        child: Text(dog.name),
+                        child: Row(
+                          children: [
+                            Icon(Icons.pets, size: 16, color: dogColor),
+                            const SizedBox(width: 8),
+                            Text(dog.name),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: dogColor.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                dog.serviceType == 'asilo' ? 'Asilo' : 'Pensione',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: dogColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       );
                     }).toList(),
                     onChanged: (value) {
@@ -546,6 +573,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 4),
+              color: Colors.grey[50],
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
@@ -580,15 +608,50 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         (d) => d.supabaseId == booking.dogId,
                         orElse: () => Dog(name: 'Cane sconosciuto'),
                       );
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
+                      // Colore diverso per Asilo vs Pensione
+                      final Color dogColor = dog.serviceType == 'asilo' 
+                          ? Colors.orange 
+                          : Colors.blue;
+                      
+                      return Container(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: dogColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: dogColor.withOpacity(0.3)),
+                        ),
                         child: Row(
                           children: [
-                            const Icon(Icons.pets, size: 16, color: Colors.brown),
+                            CircleAvatar(
+                              radius: 14,
+                              backgroundColor: dogColor,
+                              child: Text(
+                                dog.name[0].toUpperCase(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
-                              child: Text(
-                                '${dog.name} • ${booking.formattedStart} - ${booking.formattedEnd}${booking.notes != null ? ' 📝 ${booking.notes}' : ''}',
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    dog.name,
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  Text(
+                                    '${dog.serviceType == 'asilo' ? '🎨 Asilo' : '🏠 Pensione'} • ${booking.formattedStart} - ${booking.formattedEnd}${booking.notes != null ? ' 📝 ${booking.notes}' : ''}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             IconButton(

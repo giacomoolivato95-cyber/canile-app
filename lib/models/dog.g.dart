@@ -22,6 +22,8 @@ class DogAdapter extends TypeAdapter<Dog> {
       owner: fields[2] as String?,
       phone: fields[3] as String?,
       notes: fields[4] as String?,
+      breed: fields[7] as String?,
+      serviceType: fields[8] as String,
       updatedAt: fields[5] as DateTime?,
       synced: fields[6] as bool,
     );
@@ -30,7 +32,7 @@ class DogAdapter extends TypeAdapter<Dog> {
   @override
   void write(BinaryWriter writer, Dog obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.supabaseId)
       ..writeByte(1)
@@ -44,7 +46,11 @@ class DogAdapter extends TypeAdapter<Dog> {
       ..writeByte(5)
       ..write(obj.updatedAt)
       ..writeByte(6)
-      ..write(obj.synced);
+      ..write(obj.synced)
+      ..writeByte(7)
+      ..write(obj.breed)
+      ..writeByte(8)
+      ..write(obj.serviceType);
   }
 
   @override
