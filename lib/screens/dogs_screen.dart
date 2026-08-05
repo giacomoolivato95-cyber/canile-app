@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/dog.dart';
+import '../models/kennel_box.dart';
+import '../models/booking.dart';
 
 class DogsScreen extends StatefulWidget {
   const DogsScreen({super.key});
@@ -11,7 +14,52 @@ class DogsScreen extends StatefulWidget {
 
 class _DogsScreenState extends State<DogsScreen> {
   final Box<Dog> dogBox = Hive.box<Dog>('dogs');
-  String? _selectedServiceType = 'pensione';
+  final SupabaseClient supabase = Supabase.instance.client;
+  List<Dog> _dogs = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDogs();
+  }
+
+  Future<void> _loadDogs() async {
+    setState(() => _isLoading = true);
+    try {
+      // 1. Prova a caricare da Supabase
+      final response = await supabase.from('dogs').select('*').order('name');
+      final dogsFromSupabase = List<Map<String, dynamic>>.from(response);
+      
+      if (dogsFromSupabase.isNotEmpty) {
+        // Svuota Hive e riempi con i dati di Supabase
+        await dogBox.clear();
+        for (var dogData in dogsFromSupabase) {
+          final dog = Dog(
+            supabaseId: dogData['id'],
+            name: dogData['name'] ?? '',
+            breed: dogData['breed'],
+            serviceType: dogData['service_type'] ?? 'pensione',
+            owner: dogData['owner'],
+            phone: dogData['phone'],
+            notes: dogData['notes'],
+            updatedAt: DateTime.parse(dogData['updated_at'] ?? DateTime.now().toIso8601String()),
+            synced: true,
+          );
+          await dogBox.add(dog);
+        }
+        _dogs = dogBox.values.toList();
+      } else {
+        // Se Supabase è vuoto, carica da Hive
+        _dogs = dogBox.values.toList();
+      }
+    } catch (e) {
+      print('❌ Errore caricamento cani: $e');
+      // Fallback: carica da Hive
+      _dogs = dogBox.values.toList();
+    }
+    setState(() => _isLoading = false);
+  }
 
   void _showAddDogDialog([Dog? dogToEdit]) async {
     final isEditing = dogToEdit != null;
@@ -21,7 +69,6 @@ class _DogsScreenState extends State<DogsScreen> {
     final phoneController = TextEditingController(text: dogToEdit?.phone ?? '');
     final notesController = TextEditingController(text: dogToEdit?.notes ?? '');
     
-    // Valore iniziale per il tipo servizio
     String? selectedServiceType = dogToEdit?.serviceType ?? 'pensione';
 
     final result = await showDialog<bool>(
@@ -34,21 +81,16 @@ class _DogsScreenState extends State<DogsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Nome
                   TextField(
                     controller: nameController,
                     decoration: const InputDecoration(labelText: 'Nome *'),
                   ),
                   const SizedBox(height: 8),
-                  
-                  // RAZZA (NUOVO)
                   TextField(
                     controller: breedController,
                     decoration: const InputDecoration(labelText: 'Razza'),
                   ),
                   const SizedBox(height: 8),
-                  
-                  // TIPO SERVIZIO (ASILO/PENSIONE) con colori
                   DropdownButtonFormField<String>(
                     value: selectedServiceType,
                     decoration: const InputDecoration(
@@ -84,23 +126,17 @@ class _DogsScreenState extends State<DogsScreen> {
                     },
                   ),
                   const SizedBox(height: 8),
-                  
-                  // Proprietario
                   TextField(
                     controller: ownerController,
                     decoration: const InputDecoration(labelText: 'Proprietario'),
                   ),
                   const SizedBox(height: 8),
-                  
-                  // Telefono
                   TextField(
                     controller: phoneController,
                     decoration: const InputDecoration(labelText: 'Telefono'),
                     keyboardType: TextInputType.phone,
                   ),
                   const SizedBox(height: 8),
-                  
-                  // Note
                   TextField(
                     controller: notesController,
                     decoration: const InputDecoration(labelText: 'Note'),
@@ -143,46 +179,103 @@ class _DogsScreenState extends State<DogsScreen> {
     );
 
     if (result == true) {
-      if (isEditing) {
-        dogToEdit!.name = nameController.text.trim();
-        dogToEdit.breed = breedController.text.trim().isEmpty ? null : breedController.text.trim();
-        dogToEdit.serviceType = selectedServiceType!;
-        dogToEdit.owner = ownerController.text.trim().isEmpty ? null : ownerController.text.trim();
-        dogToEdit.phone = phoneController.text.trim().isEmpty ? null : phoneController.text.trim();
-        dogToEdit.notes = notesController.text.trim().isEmpty ? null : notesController.text.trim();
-        dogToEdit.save();
-      } else {
-        final dog = Dog(
-          name: nameController.text.trim(),
-          breed: breedController.text.trim().isEmpty ? null : breedController.text.trim(),
-          serviceType: selectedServiceType!,
-          owner: ownerController.text.trim().isEmpty ? null : ownerController.text.trim(),
-          phone: phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
-          notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
-          synced: false,
+      setState(() => _isLoading = true);
+      
+      try {
+        final data = {
+          'name': nameController.text.trim(),
+          'breed': breedController.text.trim().isEmpty ? null : breedController.text.trim(),
+          'service_type': selectedServiceType!,
+          'owner': ownerController.text.trim().isEmpty ? null : ownerController.text.trim(),
+          'phone': phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
+          'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        };
+
+        if (isEditing && dogToEdit != null && dogToEdit.supabaseId != null) {
+          // 🔥 AGGIORNA SU SUPABASE
+          await supabase.from('dogs').update(data).match({'id': dogToEdit.supabaseId!});
+          
+          // Aggiorna anche Hive
+          dogToEdit.name = data['name']!;
+          dogToEdit.breed = data['breed'];
+          dogToEdit.serviceType = data['service_type']!;
+          dogToEdit.owner = data['owner'];
+          dogToEdit.phone = data['phone'];
+          dogToEdit.notes = data['notes'];
+          dogToEdit.synced = true;
+          await dogToEdit.save();
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Cane aggiornato su cloud!')),
+          );
+        } else {
+          // 🔥 SALVA DIRETTAMENTE SU SUPABASE (nuovo cane)
+          final result = await supabase.from('dogs').insert(data).select();
+          final supabaseId = result[0]['id'];
+          
+          // Salva anche in Hive come backup
+          final dog = Dog(
+            supabaseId: supabaseId,
+            name: data['name']!,
+            breed: data['breed'],
+            serviceType: data['service_type']!,
+            owner: data['owner'],
+            phone: data['phone'],
+            notes: data['notes'],
+            synced: true,
+          );
+          await dogBox.add(dog);
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('✅ Cane salvato su cloud!')),
+          );
+        }
+        
+        await _loadDogs();
+        
+      } catch (e) {
+        print('❌ Errore salvataggio: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Errore: $e')),
         );
-        dogBox.add(dog);
+        setState(() => _isLoading = false);
       }
-      setState(() {});
     }
   }
 
-  void _deleteDog(Dog dog) {
+  void _deleteDog(Dog dog) async {
+    if (dog.supabaseId == null) {
+      // Se non ha supabaseId, elimina solo da Hive
+      await dog.delete();
+      await _loadDogs();
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Elimina cane'),
-        content: Text('Eliminare ${dog.name}?'),
+        content: Text('Eliminare ${dog.name}? (eliminato anche dal cloud)'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Annulla'),
           ),
           TextButton(
-            onPressed: () {
-              dog.delete();
-              setState(() {});
-              Navigator.pop(context);
+            onPressed: () async {
+              try {
+                await supabase.from('dogs').delete().match({'id': dog.supabaseId!});
+                await dog.delete();
+                await _loadDogs();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('✅ Cane eliminato dal cloud')),
+                );
+                Navigator.pop(context);
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('❌ Errore: $e')),
+                );
+              }
             },
             style: TextButton.styleFrom(
               foregroundColor: Colors.red,
@@ -196,13 +289,17 @@ class _DogsScreenState extends State<DogsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDogDialog,
         backgroundColor: Colors.brown,
         child: const Icon(Icons.add),
       ),
-      body: dogBox.values.isEmpty
+      body: _dogs.isEmpty
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -227,11 +324,10 @@ class _DogsScreenState extends State<DogsScreen> {
             )
           : ListView.builder(
               padding: const EdgeInsets.all(8),
-              itemCount: dogBox.values.length,
+              itemCount: _dogs.length,
               itemBuilder: (context, index) {
-                final dog = dogBox.values.toList()[index];
+                final dog = _dogs[index];
                 
-                // Colore diverso per tipo servizio
                 final Color cardColor = dog.serviceType == 'asilo' 
                     ? Colors.orange.shade50 
                     : Colors.blue.shade50;
