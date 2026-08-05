@@ -36,7 +36,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Future<void> _loadAllData() async {
     setState(() => _isLoading = true);
     try {
-      // Carica da Supabase
       final dogsResponse = await supabase.from('dogs').select('*');
       _dogs = List<Map<String, dynamic>>.from(dogsResponse);
       
@@ -46,7 +45,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final bookingsResponse = await supabase.from('bookings').select('*').order('start_date');
       _bookings = List<Map<String, dynamic>>.from(bookingsResponse);
       
-      // Se Supabase è vuoto, prova a caricare da Hive (fallback)
       if (_dogs.isEmpty) {
         final localDogs = dogBox.values.toList();
         for (var dog in localDogs) {
@@ -90,14 +88,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
     setState(() => _isLoading = false);
   }
 
-  // Ottiene le prenotazioni per una data specifica
   List<Map<String, dynamic>> _getBookingsForDate(DateTime date) {
     final dateStr = DateFormat('yyyy-MM-dd').format(date);
     return _bookings.where((b) {
-      final start = b['start_date'];
-      final end = b['end_date'];
+      final start = b['start_date'] ?? '';
+      final end = b['end_date'] ?? '';
       return dateStr.compareTo(start) >= 0 && dateStr.compareTo(end) <= 0;
     }).toList();
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   void _showAddBookingDialog({DateTime? selectedDate}) async {
@@ -118,7 +124,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     DateTime endDate = date;
     final notesController = TextEditingController();
 
-    // Trova le prenotazioni per la data selezionata
     final existingBookings = _getBookingsForDate(date);
 
     final result = await showDialog<bool>(
@@ -132,7 +137,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Mostra i box già occupati
                   if (existingBookings.isNotEmpty) ...[
                     Container(
                       padding: const EdgeInsets.all(8),
@@ -187,7 +191,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Selezione cane
                   DropdownButtonFormField<Map<String, dynamic>>(
                     value: selectedDog,
                     decoration: const InputDecoration(labelText: 'Cane *'),
@@ -205,17 +208,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Selezione box
                   DropdownButtonFormField<Map<String, dynamic>>(
                     value: selectedBox,
                     decoration: const InputDecoration(labelText: 'Box *'),
                     items: _boxes.map((box) {
-                      // Trova i cani già nel box per la data selezionata
                       final bookingsInBox = existingBookings.where((b) => b['box_id'] == box['id']).toList();
                       final count = bookingsInBox.length;
                       final isFull = count >= (box['capacity'] ?? 2);
 
-                      // Nomi dei cani già presenti
                       final dogNames = bookingsInBox.map((b) {
                         final dog = _dogs.firstWhere(
                           (d) => d['id'] == b['dog_id'],
@@ -251,7 +251,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Data inizio
                   ListTile(
                     title: const Text('Data inizio'),
                     subtitle: Text(DateFormat('dd/MM/yyyy').format(startDate)),
@@ -274,7 +273,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     },
                   ),
 
-                  // Data fine
                   ListTile(
                     title: const Text('Data fine'),
                     subtitle: Text(DateFormat('dd/MM/yyyy').format(endDate)),
@@ -295,7 +293,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Note
                   TextField(
                     controller: notesController,
                     decoration: const InputDecoration(
@@ -340,22 +337,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
       setState(() => _isLoading = true);
       try {
         final data = {
-          'dog_id': selectedDog['id'],
-          'box_id': selectedBox['id'],
+          'dog_id': selectedDog['id'] as String,
+          'box_id': selectedBox['id'] as String,
           'start_date': DateFormat('yyyy-MM-dd').format(startDate),
           'end_date': DateFormat('yyyy-MM-dd').format(endDate),
           'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
         };
 
-        // 🔥 SALVA DIRETTAMENTE SU SUPABASE
         final result = await supabase.from('bookings').insert(data).select();
-        final supabaseId = result[0]['id'];
+        final supabaseId = result[0]['id'] as String;
         
-        // Salva anche in Hive come backup
         final booking = Booking(
           supabaseId: supabaseId,
-          dogId: selectedDog['id'],
-          boxId: selectedBox['id'],
+          dogId: selectedDog['id'] as String,
+          boxId: selectedBox['id'] as String,
           startDate: startDate,
           endDate: endDate,
           notes: data['notes'],
@@ -374,9 +369,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _deleteBooking(Map<String, dynamic> booking) async {
-    final supabaseId = booking['id'];
+    final supabaseId = booking['id'] as String?;
     if (supabaseId == null) {
-      // Elimina solo da Hive
       final localBooking = bookingBox.values.firstWhere(
         (b) => b.supabaseId == supabaseId,
         orElse: () => Booking(dogId: '', boxId: '', startDate: DateTime.now(), endDate: DateTime.now()),
@@ -420,26 +414,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    // Raggruppa le prenotazioni per data
     final Map<String, List<Map<String, dynamic>>> bookingsByDay = {};
     for (var booking in _bookings) {
-      final start = booking['start_date'];
-      final end = booking['end_date'];
+      final start = booking['start_date'] as String;
+      final end = booking['end_date'] as String;
       var current = DateTime.parse(start);
       final endDate = DateTime.parse(end);
       
@@ -539,4 +523,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
     }
 
-    return List
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: dayBookings.length,
+      itemBuilder: (context, index) {
+        final booking = dayBookings[index];
+        final dog = _dogs.firstWhere(
+          (d) => d['id'] == booking['dog_id'],
+          orElse: () => {'name': 'Cane sconosciuto', 'service_type': 'pensione'},
+        );
+        final box = _boxes.firstWhere(
+          (b) => b['id'] == booking['box_id'],
+          orElse: () => {'name': 'Box sconosciuto', 'capacity': 2},
+        );
+
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.brown[100],
+              child: const Icon(Icons.pets, color: Colors.brown),
+            ),
+            title: Text(dog['name'] ?? ''),
+            subtitle: Text(
+              '${box['name']} • ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['start_date'] as String))} - ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['end_date'] as String))}${booking['notes'] != null ? '\n📝 ${booking['notes']}' : ''}',
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              onPressed: () => _deleteBooking(booking),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
