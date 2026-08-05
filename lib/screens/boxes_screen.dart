@@ -144,8 +144,8 @@ class _BoxesScreenState extends State<BoxesScreen> {
           boxToEdit.synced = true;
           await boxToEdit.save();
         } else {
-          final result = await supabase.from('boxes').insert(data).select();
-          final supabaseId = result[0]['id'] as String;
+          final resultInsert = await supabase.from('boxes').insert(data).select();
+          final supabaseId = resultInsert[0]['id'] as String;
           
           final box = KennelBox(
             supabaseId: supabaseId,
