@@ -12,20 +12,40 @@ class SyncService {
 
   final SupabaseClient supabase = Supabase.instance.client;
   
-  late final Box<Dog> dogBox;
-  late final Box<KennelBox> boxBox;
-  late final Box<Booking> bookingBox;
+  // ⚠️ ATTENZIONE: non usare late senza inizializzazione
+  Box<Dog>? _dogBox;
+  Box<KennelBox>? _boxBox;
+  Box<Booking>? _bookingBox;
 
   bool _isInitialized = false;
   bool _isSyncing = false;
 
+  // Getter sicuri con controllo
+  Box<Dog> get dogBox {
+    if (_dogBox == null) throw Exception('Dog box not initialized. Call initialize() first.');
+    return _dogBox!;
+  }
+  
+  Box<KennelBox> get boxBox {
+    if (_boxBox == null) throw Exception('Box box not initialized. Call initialize() first.');
+    return _boxBox!;
+  }
+  
+  Box<Booking> get bookingBox {
+    if (_bookingBox == null) throw Exception('Booking box not initialized. Call initialize() first.');
+    return _bookingBox!;
+  }
+
   void initialize() {
-    if (!_isInitialized) {
-      dogBox = Hive.box<Dog>('dogs');
-      boxBox = Hive.box<KennelBox>('kennel_boxes');
-      bookingBox = Hive.box<Booking>('bookings');
+    try {
+      _dogBox = Hive.box<Dog>('dogs');
+      _boxBox = Hive.box<KennelBox>('kennel_boxes');
+      _bookingBox = Hive.box<Booking>('bookings');
       _isInitialized = true;
       print('✅ SyncService inizializzato');
+    } catch (e) {
+      print('❌ Errore inizializzazione SyncService: $e');
+      rethrow;
     }
   }
 
