@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/kennel_box.dart';
 
 class BoxesScreen extends StatefulWidget {
@@ -11,6 +12,52 @@ class BoxesScreen extends StatefulWidget {
 
 class _BoxesScreenState extends State<BoxesScreen> {
   final Box<KennelBox> boxBox = Hive.box<KennelBox>('kennel_boxes');
+  final SupabaseClient supabase = Supabase.instance.client;
+  List<Map<String, dynamic>> _boxes = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBoxes();
+  }
+
+  Future<void> _loadBoxes() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await supabase.from('boxes').select('*').order('name');
+      _boxes = List<Map<String, dynamic>>.from(response);
+      
+      if (_boxes.isEmpty) {
+        // Se Supabase è vuoto, carica da Hive
+        final localBoxes = boxBox.values.toList();
+        for (var box in localBoxes) {
+          final data = {
+            'name': box.name,
+            'notes': box.notes,
+            'capacity': box.capacity,
+          };
+          final result = await supabase.from('boxes').insert(data).select();
+          box.supabaseId = result[0]['id'];
+          box.synced = true;
+          await box.save();
+        }
+        // Ricarica da Supabase
+        final response2 = await supabase.from('boxes').select('*').order('name');
+        _boxes = List<Map<String, dynamic>>.from(response2);
+      }
+    } catch (e) {
+      print('❌ Errore caricamento box: $e');
+      // Fallback: carica da Hive
+      _boxes = boxBox.values.map((b) => {
+        'id': b.supabaseId ?? 'local',
+        'name': b.name,
+        'notes': b.notes,
+        'capacity': b.capacity,
+      }).toList();
+    }
+    setState(() => _isLoading = false);
+  }
 
   void _showAddBoxDialog([KennelBox? boxToEdit]) async {
     final isEditing = boxToEdit != null;
@@ -56,7 +103,7 @@ class _BoxesScreenState extends State<BoxesScreen> {
             child: const Text('Annulla'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (nameController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Il nome è obbligatorio')),
@@ -83,45 +130,96 @@ class _BoxesScreenState extends State<BoxesScreen> {
     );
 
     if (result == true) {
-      final capacity = int.tryParse(capacityController.text.trim()) ?? 2;
-      if (isEditing) {
-        boxToEdit!.name = nameController.text.trim();
-        boxToEdit.notes = notesController.text.trim();
-        boxToEdit.capacity = capacity;
-        boxToEdit.save();
-      } else {
-        final box = KennelBox(
-          name: nameController.text.trim(),
-          notes: notesController.text.trim(),
-          capacity: capacity,
-          synced: false,
+      setState(() => _isLoading = true);
+      try {
+        final capacity = int.tryParse(capacityController.text.trim()) ?? 2;
+        final data = {
+          'name': nameController.text.trim(),
+          'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+          'capacity': capacity,
+        };
+
+        if (isEditing && boxToEdit != null && boxToEdit.supabaseId != null) {
+          // 🔥 AGGIORNA SU SUPABASE
+          await supabase.from('boxes').update(data).match({'id': boxToEdit.supabaseId!});
+          boxToEdit.name = data['name']!;
+          boxToEdit.notes = data['notes'];
+          boxToEdit.capacity = data['capacity']!;
+          boxToEdit.synced = true;
+          await boxToEdit.save();
+        } else {
+          // 🔥 SALVA DIRETTAMENTE SU SUPABASE
+          final result = await supabase.from('boxes').insert(data).select();
+          final supabaseId = result[0]['id'];
+          
+          // Salva anche in Hive come backup
+          final box = KennelBox(
+            supabaseId: supabaseId,
+            name: data['name']!,
+            notes: data['notes'],
+            capacity: data['capacity']!,
+            synced: true,
+          );
+          await boxBox.add(box);
+        }
+        
+        await _loadBoxes();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Box salvato su cloud!')),
         );
-        boxBox.add(box);
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Errore: $e')),
+        );
+        setState(() => _isLoading = false);
       }
-      setState(() {});
     }
   }
 
-  void _deleteBox(KennelBox box) {
+  void _deleteBox(Map<String, dynamic> box) async {
+    final supabaseId = box['id'];
+    if (supabaseId == null || supabaseId.toString().startsWith('local')) {
+      // Se non ha supabaseId, elimina solo da Hive
+      final localBox = boxBox.values.firstWhere(
+        (b) => b.supabaseId == supabaseId,
+        orElse: () => KennelBox(name: ''),
+      );
+      if (localBox.name.isNotEmpty) await localBox.delete();
+      await _loadBoxes();
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Elimina box'),
-        content: Text('Eliminare ${box.name}?'),
+        content: Text('Eliminare ${box['name']}? (eliminato anche dal cloud)'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Annulla'),
           ),
           TextButton(
-            onPressed: () {
-              box.delete();
-              setState(() {});
-              Navigator.pop(context);
+            onPressed: () async {
+              try {
+                await supabase.from('boxes').delete().match({'id': supabaseId});
+                final localBox = boxBox.values.firstWhere(
+                  (b) => b.supabaseId == supabaseId,
+                  orElse: () => KennelBox(name: ''),
+                );
+                if (localBox.name.isNotEmpty) await localBox.delete();
+                await _loadBoxes();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('✅ Box eliminato dal cloud')),
+                );
+                Navigator.pop(context);
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('❌ Errore: $e')),
+                );
+              }
             },
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Elimina'),
           ),
         ],
@@ -131,30 +229,28 @@ class _BoxesScreenState extends State<BoxesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddBoxDialog,
         backgroundColor: Colors.brown,
         child: const Icon(Icons.add),
       ),
-      body: boxBox.values.isEmpty
+      body: _boxes.isEmpty
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.inventory_2, size: 64, color: Colors.grey[400]),
                   const SizedBox(height: 16),
-                  Text(
-                    'Nessun box configurato',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
+                  const Text('Nessun box configurato'),
                   const SizedBox(height: 8),
                   ElevatedButton(
                     onPressed: _showAddBoxDialog,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.brown,
-                      foregroundColor: Colors.white,
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.brown),
                     child: const Text('➕ Aggiungi box'),
                   ),
                 ],
@@ -162,9 +258,9 @@ class _BoxesScreenState extends State<BoxesScreen> {
             )
           : ListView.builder(
               padding: const EdgeInsets.all(8),
-              itemCount: boxBox.values.length,
+              itemCount: _boxes.length,
               itemBuilder: (context, index) {
-                final box = boxBox.values.toList()[index];
+                final box = _boxes[index];
                 return Card(
                   margin: const EdgeInsets.symmetric(vertical: 4),
                   child: ListTile(
@@ -172,14 +268,14 @@ class _BoxesScreenState extends State<BoxesScreen> {
                       backgroundColor: Colors.brown[100],
                       child: const Icon(Icons.inventory_2, color: Colors.brown),
                     ),
-                    title: Text(box.name),
+                    title: Text(box['name'] ?? ''),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (box.notes != null && box.notes!.isNotEmpty)
-                          Text(box.notes!),
+                        if (box['notes'] != null && box['notes'].toString().isNotEmpty)
+                          Text(box['notes']),
                         Text(
-                          'Capienza: ${box.capacity} cane${box.capacity > 1 ? 's' : ''}',
+                          'Capienza: ${box['capacity'] ?? 2} cane${(box['capacity'] ?? 2) > 1 ? 's' : ''}',
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 12,
@@ -192,7 +288,25 @@ class _BoxesScreenState extends State<BoxesScreen> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit, size: 20),
-                          onPressed: () => _showAddBoxDialog(box),
+                          onPressed: () {
+                            // Trova il box in Hive per la modifica
+                            final localBox = boxBox.values.firstWhere(
+                              (b) => b.supabaseId == box['id'],
+                              orElse: () => KennelBox(name: ''),
+                            );
+                            if (localBox.name.isNotEmpty) {
+                              _showAddBoxDialog(localBox);
+                            } else {
+                              // Crea un oggetto temporaneo per la modifica
+                              final tempBox = KennelBox(
+                                supabaseId: box['id'],
+                                name: box['name'] ?? '',
+                                notes: box['notes'],
+                                capacity: box['capacity'] ?? 2,
+                              );
+                              _showAddBoxDialog(tempBox);
+                            }
+                          },
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline, size: 20),
