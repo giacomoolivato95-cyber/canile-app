@@ -34,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _checkConnectivity();
     _listenConnectivity();
-    // Sync automatico all'avvio (dopo che il widget è costruito)
+    // Sync automatico all'avvio
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _performSync();
     });
@@ -56,7 +56,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _isOnline = isNowOnline;
       });
 
-      // Se torniamo online, sincronizza automaticamente
       if (wasOffline && isNowOnline) {
         _performSync();
       }
@@ -92,7 +91,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _syncStatus = totalChanges > 0 ? '✅ Sincronizzato!' : '✅ Già sincronizzato';
       });
 
-      // Aggiorna le schermate (se ci sono widget che dipendono dai dati)
       setState(() {});
 
       if (totalChanges > 0) {
@@ -134,9 +132,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============ ESPORTA DATI (doppio tap sul titolo) ============
-  void _exportLocalData() async {
+  // ============ ESPORTA DATI ============
+  Future<void> _exportLocalData() async {
     try {
+      // Verifica che i box siano aperti
       final dogBox = Hive.box<Dog>('dogs');
       final boxBox = Hive.box<KennelBox>('kennel_boxes');
       final bookingBox = Hive.box<Booking>('bookings');
@@ -167,6 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final jsonString = jsonEncode(data);
       await Clipboard.setData(ClipboardData(text: jsonString));
       
+      // Mostra il dialog con il conteggio
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -215,21 +215,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: GestureDetector(
-          onDoubleTap: _exportLocalData,
-          child: Row(
-            children: [
-              const Text('Canile App'),
-              if (_syncStatus.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text(
-                    _syncStatus,
-                    style: const TextStyle(fontSize: 12),
-                  ),
+        title: Row(
+          children: [
+            const Text('Canile App'),
+            if (_syncStatus.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  _syncStatus,
+                  style: const TextStyle(fontSize: 12),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
         actions: [
           // Indicatore di stato online/offline
@@ -248,7 +245,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           
-          // 🔥 PULSANTE SYNCHRONIZE - BEN VISIBILE
+          // 🔥 PULSANTE ESPORTA DATI (visibile)
+          IconButton(
+            icon: const Icon(Icons.download, color: Colors.white),
+            onPressed: _exportLocalData,
+            tooltip: 'Esporta dati locali',
+          ),
+          
+          // 🔥 PULSANTE SYNCHRONIZE
           IconButton(
             icon: Icon(
               _isSyncing ? Icons.sync_problem : Icons.sync,
