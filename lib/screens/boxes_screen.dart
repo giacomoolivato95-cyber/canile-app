@@ -29,7 +29,6 @@ class _BoxesScreenState extends State<BoxesScreen> {
       _boxes = List<Map<String, dynamic>>.from(response);
       
       if (_boxes.isEmpty) {
-        // Se Supabase è vuoto, carica da Hive
         final localBoxes = boxBox.values.toList();
         for (var box in localBoxes) {
           final data = {
@@ -38,17 +37,15 @@ class _BoxesScreenState extends State<BoxesScreen> {
             'capacity': box.capacity,
           };
           final result = await supabase.from('boxes').insert(data).select();
-          box.supabaseId = result[0]['id'];
+          box.supabaseId = result[0]['id'] as String;
           box.synced = true;
           await box.save();
         }
-        // Ricarica da Supabase
         final response2 = await supabase.from('boxes').select('*').order('name');
         _boxes = List<Map<String, dynamic>>.from(response2);
       }
     } catch (e) {
       print('❌ Errore caricamento box: $e');
-      // Fallback: carica da Hive
       _boxes = boxBox.values.map((b) => {
         'id': b.supabaseId ?? 'local',
         'name': b.name,
@@ -133,31 +130,28 @@ class _BoxesScreenState extends State<BoxesScreen> {
       setState(() => _isLoading = true);
       try {
         final capacity = int.tryParse(capacityController.text.trim()) ?? 2;
-        final data = {
+        final Map<String, dynamic> data = {
           'name': nameController.text.trim(),
           'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
           'capacity': capacity,
         };
 
         if (isEditing && boxToEdit != null && boxToEdit.supabaseId != null) {
-          // 🔥 AGGIORNA SU SUPABASE
           await supabase.from('boxes').update(data).match({'id': boxToEdit.supabaseId!});
-          boxToEdit.name = data['name']!;
-          boxToEdit.notes = data['notes'];
-          boxToEdit.capacity = data['capacity']!;
+          boxToEdit.name = data['name'] as String;
+          boxToEdit.notes = data['notes'] as String?;
+          boxToEdit.capacity = data['capacity'] as int;
           boxToEdit.synced = true;
           await boxToEdit.save();
         } else {
-          // 🔥 SALVA DIRETTAMENTE SU SUPABASE
           final result = await supabase.from('boxes').insert(data).select();
-          final supabaseId = result[0]['id'];
+          final supabaseId = result[0]['id'] as String;
           
-          // Salva anche in Hive come backup
           final box = KennelBox(
             supabaseId: supabaseId,
-            name: data['name']!,
-            notes: data['notes'],
-            capacity: data['capacity']!,
+            name: data['name'] as String,
+            notes: data['notes'] as String?,
+            capacity: data['capacity'] as int,
             synced: true,
           );
           await boxBox.add(box);
@@ -177,9 +171,8 @@ class _BoxesScreenState extends State<BoxesScreen> {
   }
 
   void _deleteBox(Map<String, dynamic> box) async {
-    final supabaseId = box['id'];
-    if (supabaseId == null || supabaseId.toString().startsWith('local')) {
-      // Se non ha supabaseId, elimina solo da Hive
+    final supabaseId = box['id'] as String?;
+    if (supabaseId == null || supabaseId.startsWith('local')) {
       final localBox = boxBox.values.firstWhere(
         (b) => b.supabaseId == supabaseId,
         orElse: () => KennelBox(name: ''),
@@ -273,7 +266,7 @@ class _BoxesScreenState extends State<BoxesScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (box['notes'] != null && box['notes'].toString().isNotEmpty)
-                          Text(box['notes']),
+                          Text(box['notes'] as String),
                         Text(
                           'Capienza: ${box['capacity'] ?? 2} cane${(box['capacity'] ?? 2) > 1 ? 's' : ''}',
                           style: TextStyle(
@@ -289,7 +282,6 @@ class _BoxesScreenState extends State<BoxesScreen> {
                         IconButton(
                           icon: const Icon(Icons.edit, size: 20),
                           onPressed: () {
-                            // Trova il box in Hive per la modifica
                             final localBox = boxBox.values.firstWhere(
                               (b) => b.supabaseId == box['id'],
                               orElse: () => KennelBox(name: ''),
@@ -297,11 +289,10 @@ class _BoxesScreenState extends State<BoxesScreen> {
                             if (localBox.name.isNotEmpty) {
                               _showAddBoxDialog(localBox);
                             } else {
-                              // Crea un oggetto temporaneo per la modifica
                               final tempBox = KennelBox(
-                                supabaseId: box['id'],
+                                supabaseId: box['id'] as String?,
                                 name: box['name'] ?? '',
-                                notes: box['notes'],
+                                notes: box['notes'] as String?,
                                 capacity: box['capacity'] ?? 2,
                               );
                               _showAddBoxDialog(tempBox);
