@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -30,27 +29,32 @@ void main() async {
     print('✅ Supabase inizializzato!');
 
     // ==============================================
-    // 3. INIZIALIZZA HIVE (database locale)
+    // 3. 🔥 INIZIALIZZA HIVE (database locale) - PRIMA di tutto
     // ==============================================
     await Hive.initFlutter();
+    print('✅ Hive inizializzato!');
+
+    // Registra gli adapter
     Hive.registerAdapter(DogAdapter());
     Hive.registerAdapter(KennelBoxAdapter());
     Hive.registerAdapter(BookingAdapter());
+    print('✅ Adapter registrati!');
 
+    // 🔥 APRE I BOX - SUBITO!
     await Hive.openBox<Dog>('dogs');
     await Hive.openBox<KennelBox>('kennel_boxes');
     await Hive.openBox<Booking>('bookings');
-    print('✅ Hive inizializzato!');
+    print('✅ Box aperti!');
 
     // ==============================================
-    // 4. INIZIALIZZA IL SYNC SERVICE
+    // 4. INIZIALIZZA IL SYNC SERVICE (DOPO che Hive è aperto)
     // ==============================================
     final syncService = SyncService();
     syncService.initialize();
     print('✅ SyncService inizializzato!');
 
     // ==============================================
-    // 5. 🔥 SINCRONIZZA ALL'AVVIO (se online)
+    // 5. SINCRONIZZA ALL'AVVIO (se online)
     // ==============================================
     if (await syncService.hasInternet()) {
       print('🔄 Sincronizzazione all\'avvio...');
