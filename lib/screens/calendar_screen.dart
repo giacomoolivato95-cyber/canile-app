@@ -336,21 +336,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (result == true && selectedDog != null && selectedBox != null) {
       setState(() => _isLoading = true);
       try {
+        final dogId = selectedDog!['id'] as String;
+        final boxId = selectedBox!['id'] as String;
+
         final data = {
-          'dog_id': selectedDog['id'] as String,
-          'box_id': selectedBox['id'] as String,
+          'dog_id': dogId,
+          'box_id': boxId,
           'start_date': DateFormat('yyyy-MM-dd').format(startDate),
           'end_date': DateFormat('yyyy-MM-dd').format(endDate),
           'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
         };
 
-        final result = await supabase.from('bookings').insert(data).select();
-        final supabaseId = result[0]['id'] as String;
+        final resultInsert = await supabase.from('bookings').insert(data).select();
+        final supabaseId = resultInsert[0]['id'] as String;
         
         final booking = Booking(
           supabaseId: supabaseId,
-          dogId: selectedDog['id'] as String,
-          boxId: selectedBox['id'] as String,
+          dogId: dogId,
+          boxId: boxId,
           startDate: startDate,
           endDate: endDate,
           notes: data['notes'],
@@ -538,23 +541,4 @@ class _CalendarScreenState extends State<CalendarScreen> {
         );
 
         return Card(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.brown[100],
-              child: const Icon(Icons.pets, color: Colors.brown),
-            ),
-            title: Text(dog['name'] ?? ''),
-            subtitle: Text(
-              '${box['name']} • ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['start_date'] as String))} - ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['end_date'] as String))}${booking['notes'] != null ? '\n📝 ${booking['notes']}' : ''}',
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-              onPressed: () => _deleteBooking(booking),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
+          margin: const EdgeInset
