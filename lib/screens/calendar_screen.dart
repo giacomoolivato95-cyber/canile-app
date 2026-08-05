@@ -415,8 +415,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ],
       ),
     );
+  }
 
-      @override
+  @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -559,5 +560,4 @@ class _CalendarScreenState extends State<CalendarScreen> {
       },
     );
   }
-  }
-  }
+}
