@@ -88,7 +88,6 @@ class SyncService {
     int added = 0, updated = 0;
 
     try {
-      // PULL: Scarica i cani da Supabase
       final response = await supabase.from('dogs').select('*').order('name');
       final supabaseDogs = List<Map<String, dynamic>>.from(response);
 
@@ -99,7 +98,6 @@ class SyncService {
         );
         
         if (existingDog.name.isNotEmpty) {
-          // Aggiorna esistente
           existingDog.name = dogData['name'] ?? '';
           existingDog.breed = dogData['breed'];
           existingDog.serviceType = dogData['service_type'] ?? 'pensione';
@@ -113,7 +111,6 @@ class SyncService {
           await existingDog.save();
           updated++;
         } else {
-          // Crea nuovo
           final newDog = Dog(
             supabaseId: dogData['id'],
             name: dogData['name'] ?? '',
@@ -132,7 +129,6 @@ class SyncService {
         }
       }
 
-      // PUSH: Carica i cani non sincronizzati su Supabase
       final unsyncedDogs = dogBox.values.where((d) => !d.synced).toList();
       for (var dog in unsyncedDogs) {
         try {
@@ -146,11 +142,9 @@ class SyncService {
           };
           
           if (dog.supabaseId == null || dog.supabaseId!.startsWith('local_')) {
-            // Nuovo cane
             final result = await supabase.from('dogs').insert(data).select();
             dog.supabaseId = result[0]['id'];
           } else {
-            // Aggiornamento
             await supabase.from('dogs').update(data).match({'id': dog.supabaseId!});
           }
           dog.synced = true;
