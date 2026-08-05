@@ -415,9 +415,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ],
       ),
     );
-  }
 
-  @override
+      @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -504,11 +503,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.pets, size: 48, color: Colors.grey[400]),
+            const Icon(Icons.pets, size: 48, color: Colors.grey),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'Nessuna prenotazione per questa data',
-              style: TextStyle(color: Colors.grey[600]),
+              style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 8),
             if (_boxes.isNotEmpty && _dogs.isNotEmpty)
@@ -541,4 +540,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
         );
 
         return Card(
-          margin: const EdgeInset
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.brown[100],
+              child: const Icon(Icons.pets, color: Colors.brown),
+            ),
+            title: Text(dog['name'] ?? ''),
+            subtitle: Text(
+              '${box['name']} • ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['start_date'] as String))} - ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['end_date'] as String))}${booking['notes'] != null ? '\n📝 ${booking['notes']}' : ''}',
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              onPressed: () => _deleteBooking(booking),
+            ),
+          ),
+        );
+      },
+    );
+  }
+  }
+  }
