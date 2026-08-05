@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/booking.dart';
 import '../models/dog.dart';
 import '../models/kennel_box.dart';
@@ -16,8 +17,12 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
-  Map<DateTime, List<Booking>> _bookingsByDay = {};
+  List<Map<String, dynamic>> _bookings = [];
+  List<Map<String, dynamic>> _dogs = [];
+  List<Map<String, dynamic>> _boxes = [];
+  bool _isLoading = true;
 
+  final SupabaseClient supabase = Supabase.instance.client;
   final Box<Booking> bookingBox = Hive.box<Booking>('bookings');
   final Box<Dog> dogBox = Hive.box<Dog>('dogs');
   final Box<KennelBox> boxBox = Hive.box<KennelBox>('kennel_boxes');
@@ -25,48 +30,90 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
-    _loadBookings();
+    _loadAllData();
   }
 
-  void _loadBookings() {
-    final bookings = bookingBox.values.toList();
-
-    final Map<DateTime, List<Booking>> grouped = {};
-    for (var booking in bookings) {
-      final start = DateTime(booking.startDate.year, booking.startDate.month, booking.startDate.day);
-      final end = DateTime(booking.endDate.year, booking.endDate.month, booking.endDate.day);
-
-      for (var date = start;
-          date.isBefore(end) || date.isAtSameMomentAs(end);
-          date = date.add(const Duration(days: 1))) {
-        final key = DateTime(date.year, date.month, date.day);
-        if (!grouped.containsKey(key)) {
-          grouped[key] = [];
+  Future<void> _loadAllData() async {
+    setState(() => _isLoading = true);
+    try {
+      // Carica da Supabase
+      final dogsResponse = await supabase.from('dogs').select('*');
+      _dogs = List<Map<String, dynamic>>.from(dogsResponse);
+      
+      final boxesResponse = await supabase.from('boxes').select('*');
+      _boxes = List<Map<String, dynamic>>.from(boxesResponse);
+      
+      final bookingsResponse = await supabase.from('bookings').select('*').order('start_date');
+      _bookings = List<Map<String, dynamic>>.from(bookingsResponse);
+      
+      // Se Supabase è vuoto, prova a caricare da Hive (fallback)
+      if (_dogs.isEmpty) {
+        final localDogs = dogBox.values.toList();
+        for (var dog in localDogs) {
+          _dogs.add({
+            'id': dog.supabaseId,
+            'name': dog.name,
+            'breed': dog.breed,
+            'service_type': dog.serviceType,
+          });
         }
-        grouped[key]!.add(booking);
       }
+      
+      if (_boxes.isEmpty) {
+        final localBoxes = boxBox.values.toList();
+        for (var box in localBoxes) {
+          _boxes.add({
+            'id': box.supabaseId,
+            'name': box.name,
+            'capacity': box.capacity,
+          });
+        }
+      }
+      
+      if (_bookings.isEmpty) {
+        final localBookings = bookingBox.values.toList();
+        for (var booking in localBookings) {
+          _bookings.add({
+            'id': booking.supabaseId,
+            'dog_id': booking.dogId,
+            'box_id': booking.boxId,
+            'start_date': booking.startDate.toIso8601String().split('T').first,
+            'end_date': booking.endDate.toIso8601String().split('T').first,
+            'notes': booking.notes,
+          });
+        }
+      }
+      
+    } catch (e) {
+      print('❌ Errore caricamento: $e');
     }
-
-    setState(() {
-      _bookingsByDay = grouped;
-    });
+    setState(() => _isLoading = false);
   }
 
-  // Mostra il dialog per aggiungere una prenotazione
+  // Ottiene le prenotazioni per una data specifica
+  List<Map<String, dynamic>> _getBookingsForDate(DateTime date) {
+    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    return _bookings.where((b) {
+      final start = b['start_date'];
+      final end = b['end_date'];
+      return dateStr.compareTo(start) >= 0 && dateStr.compareTo(end) <= 0;
+    }).toList();
+  }
+
   void _showAddBookingDialog({DateTime? selectedDate}) async {
     final date = selectedDate ?? DateTime.now();
 
-    if (dogBox.values.isEmpty) {
+    if (_dogs.isEmpty) {
       _showSnackBar('Aggiungi prima un cane nella sezione "Cani"');
       return;
     }
-    if (boxBox.values.isEmpty) {
+    if (_boxes.isEmpty) {
       _showSnackBar('Aggiungi prima un box nella sezione "Box"');
       return;
     }
 
-    Dog? selectedDog = dogBox.values.first;
-    KennelBox? selectedBox = boxBox.values.first;
+    Map<String, dynamic>? selectedDog = _dogs.first;
+    Map<String, dynamic>? selectedBox = _boxes.first;
     DateTime startDate = date;
     DateTime endDate = date;
     final notesController = TextEditingController();
@@ -107,31 +154,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ),
                           const SizedBox(height: 4),
                           ...existingBookings.map((b) {
-                            final dog = dogBox.values.firstWhere(
-                              (d) => d.supabaseId == b.dogId,
-                              orElse: () => Dog(name: '?'),
+                            final dog = _dogs.firstWhere(
+                              (d) => d['id'] == b['dog_id'],
+                              orElse: () => {'name': '?'},
                             );
-                            final box = boxBox.values.firstWhere(
-                              (bx) => bx.supabaseId == b.boxId,
-                              orElse: () => KennelBox(name: '?', capacity: 2),
+                            final box = _boxes.firstWhere(
+                              (bx) => bx['id'] == b['box_id'],
+                              orElse: () => {'name': '?', 'capacity': 2},
                             );
-                            // Conta quanti cani sono nello stesso box
-                            final sameBoxBookings = existingBookings.where((eb) => eb.boxId == b.boxId).toList();
+                            final sameBoxBookings = existingBookings.where((eb) => eb['box_id'] == b['box_id']).toList();
                             final count = sameBoxBookings.length;
-                            final Color dogColor = dog.serviceType == 'asilo' 
-                                ? Colors.orange 
-                                : Colors.blue;
                             return Padding(
                               padding: const EdgeInsets.symmetric(vertical: 2),
                               child: Row(
                                 children: [
-                                  Icon(Icons.pets, size: 14, color: dogColor),
+                                  Icon(Icons.pets, size: 14, color: Colors.orange[700]),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '${dog.name} → ${box.name} (${count}/${box.capacity})',
+                                    '${dog['name']} → ${box['name']} ($count/${box['capacity']})',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: count >= box.capacity ? Colors.red : Colors.grey[700],
+                                      color: count >= (box['capacity'] ?? 2) ? Colors.red : Colors.orange[700],
                                     ),
                                   ),
                                 ],
@@ -145,37 +188,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ],
 
                   // Selezione cane
-                  DropdownButtonFormField<Dog>(
+                  DropdownButtonFormField<Map<String, dynamic>>(
                     value: selectedDog,
                     decoration: const InputDecoration(labelText: 'Cane *'),
-                    items: dogBox.values.map((dog) {
-                      final Color dogColor = dog.serviceType == 'asilo' 
-                          ? Colors.orange 
-                          : Colors.blue;
-                      return DropdownMenuItem<Dog>(
+                    items: _dogs.map((dog) {
+                      return DropdownMenuItem<Map<String, dynamic>>(
                         value: dog,
-                        child: Row(
-                          children: [
-                            Icon(Icons.pets, size: 16, color: dogColor),
-                            const SizedBox(width: 8),
-                            Text(dog.name),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: dogColor.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                dog.serviceType == 'asilo' ? 'Asilo' : 'Pensione',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: dogColor,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: Text(dog['name'] ?? ''),
                       );
                     }).toList(),
                     onChanged: (value) {
@@ -186,77 +205,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Selezione box con info
-                  DropdownButtonFormField<KennelBox>(
+                  // Selezione box
+                  DropdownButtonFormField<Map<String, dynamic>>(
                     value: selectedBox,
                     decoration: const InputDecoration(labelText: 'Box *'),
-                    items: boxBox.values.map((box) {
+                    items: _boxes.map((box) {
                       // Trova i cani già nel box per la data selezionata
-                      final bookingsInBox = existingBookings.where((b) => b.boxId == box.supabaseId).toList();
+                      final bookingsInBox = existingBookings.where((b) => b['box_id'] == box['id']).toList();
                       final count = bookingsInBox.length;
-                      final isFull = count >= box.capacity;
+                      final isFull = count >= (box['capacity'] ?? 2);
 
                       // Nomi dei cani già presenti
                       final dogNames = bookingsInBox.map((b) {
-                        final dog = dogBox.values.firstWhere(
-                          (d) => d.supabaseId == b.dogId,
-                          orElse: () => Dog(name: '?'),
+                        final dog = _dogs.firstWhere(
+                          (d) => d['id'] == b['dog_id'],
+                          orElse: () => {'name': '?'},
                         );
-                        return dog.name;
+                        return dog['name'];
                       }).join(', ');
 
-                      // Trova i box adiacenti
-                      final boxList = boxBox.values.toList();
-                      final currentIndex = boxList.indexOf(box);
-                      final prevBox = currentIndex > 0 ? boxList[currentIndex - 1] : null;
-                      final nextBox = currentIndex < boxList.length - 1 ? boxList[currentIndex + 1] : null;
-
-                      // Trova chi è nei box adiacenti
-                      String? prevOccupant;
-                      if (prevBox != null) {
-                        final prevBookings = existingBookings.where((b) => b.boxId == prevBox.supabaseId).toList();
-                        if (prevBookings.isNotEmpty) {
-                          final names = prevBookings.map((b) {
-                            final dog = dogBox.values.firstWhere(
-                              (d) => d.supabaseId == b.dogId,
-                              orElse: () => Dog(name: '?'),
-                            );
-                            return dog.name;
-                          }).join(', ');
-                          prevOccupant = names;
-                        }
-                      }
-
-                      String? nextOccupant;
-                      if (nextBox != null) {
-                        final nextBookings = existingBookings.where((b) => b.boxId == nextBox.supabaseId).toList();
-                        if (nextBookings.isNotEmpty) {
-                          final names = nextBookings.map((b) {
-                            final dog = dogBox.values.firstWhere(
-                              (d) => d.supabaseId == b.dogId,
-                              orElse: () => Dog(name: '?'),
-                            );
-                            return dog.name;
-                          }).join(', ');
-                          nextOccupant = names;
-                        }
-                      }
-
-                      // Costruisce il testo del dropdown
-                      String label = box.name;
+                      String label = box['name'] ?? '';
                       if (count > 0) {
-                        label += ' 🐕 $dogNames ($count/${box.capacity})';
+                        label += ' 🐕 $dogNames ($count/${box['capacity']})';
                       } else {
-                        label += ' (0/${box.capacity})';
-                      }
-                      if (prevOccupant != null) {
-                        label += ' ⬅️ $prevOccupant';
-                      }
-                      if (nextOccupant != null) {
-                        label += ' ➡️ $nextOccupant';
+                        label += ' (0/${box['capacity']})';
                       }
 
-                      return DropdownMenuItem<KennelBox>(
+                      return DropdownMenuItem<Map<String, dynamic>>(
                         value: box,
                         enabled: !isFull,
                         child: Text(
@@ -362,66 +337,55 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
 
     if (result == true && selectedDog != null && selectedBox != null) {
-      // Verifica la capienza del box
-      final capacityCheck = _checkBoxCapacity(selectedBox!.supabaseId!, startDate, endDate);
-      if (capacityCheck != null) {
-        _showSnackBar('⚠️ Box pieno: $capacityCheck');
-        return;
-      }
+      setState(() => _isLoading = true);
+      try {
+        final data = {
+          'dog_id': selectedDog['id'],
+          'box_id': selectedBox['id'],
+          'start_date': DateFormat('yyyy-MM-dd').format(startDate),
+          'end_date': DateFormat('yyyy-MM-dd').format(endDate),
+          'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        };
 
-      final booking = Booking(
-        dogId: selectedDog!.supabaseId ?? '',
-        boxId: selectedBox!.supabaseId ?? '',
-        startDate: startDate,
-        endDate: endDate,
-        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
-        synced: false,
+        // 🔥 SALVA DIRETTAMENTE SU SUPABASE
+        final result = await supabase.from('bookings').insert(data).select();
+        final supabaseId = result[0]['id'];
+        
+        // Salva anche in Hive come backup
+        final booking = Booking(
+          supabaseId: supabaseId,
+          dogId: selectedDog['id'],
+          boxId: selectedBox['id'],
+          startDate: startDate,
+          endDate: endDate,
+          notes: data['notes'],
+          synced: true,
+        );
+        await bookingBox.add(booking);
+        
+        await _loadAllData();
+        _showSnackBar('✅ Prenotazione salvata!');
+        
+      } catch (e) {
+        _showSnackBar('❌ Errore: $e');
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _deleteBooking(Map<String, dynamic> booking) async {
+    final supabaseId = booking['id'];
+    if (supabaseId == null) {
+      // Elimina solo da Hive
+      final localBooking = bookingBox.values.firstWhere(
+        (b) => b.supabaseId == supabaseId,
+        orElse: () => Booking(dogId: '', boxId: '', startDate: DateTime.now(), endDate: DateTime.now()),
       );
-      bookingBox.add(booking);
-      _loadBookings();
-      _showSnackBar('✅ Prenotazione aggiunta!');
+      if (localBooking.dogId.isNotEmpty) await localBooking.delete();
+      await _loadAllData();
+      return;
     }
-  }
 
-  // Verifica la capienza del box per un periodo
-  String? _checkBoxCapacity(String boxId, DateTime start, DateTime end) {
-    final box = boxBox.values.firstWhere(
-      (b) => b.supabaseId == boxId,
-      orElse: () => KennelBox(name: '?', capacity: 2),
-    );
-    
-    final bookings = bookingBox.values.toList();
-    int count = 0;
-    for (var booking in bookings) {
-      if (booking.boxId != boxId) continue;
-      // Controlla se i periodi si sovrappongono
-      if (!(end.isBefore(booking.startDate) || start.isAfter(booking.endDate))) {
-        count++;
-      }
-    }
-    
-    if (count >= box.capacity) {
-      return 'Capienza massima (${box.capacity} cani) raggiunta';
-    }
-    return null;
-  }
-
-  // Ottiene le prenotazioni per una data specifica
-  List<Booking> _getBookingsForDate(DateTime date) {
-    final key = DateTime(date.year, date.month, date.day);
-    return _bookingsByDay[key] ?? [];
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  void _deleteBooking(Booking booking) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -433,15 +397,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: const Text('Annulla'),
           ),
           TextButton(
-            onPressed: () {
-              booking.delete();
-              _loadBookings();
-              Navigator.pop(context);
-              _showSnackBar('Prenotazione eliminata');
+            onPressed: () async {
+              try {
+                await supabase.from('bookings').delete().match({'id': supabaseId});
+                final localBooking = bookingBox.values.firstWhere(
+                  (b) => b.supabaseId == supabaseId,
+                  orElse: () => Booking(dogId: '', boxId: '', startDate: DateTime.now(), endDate: DateTime.now()),
+                );
+                if (localBooking.dogId.isNotEmpty) await localBooking.delete();
+                await _loadAllData();
+                _showSnackBar('✅ Prenotazione eliminata');
+                Navigator.pop(context);
+              } catch (e) {
+                _showSnackBar('❌ Errore: $e');
+              }
             },
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Elimina'),
           ),
         ],
@@ -449,8 +420,39 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // Raggruppa le prenotazioni per data
+    final Map<String, List<Map<String, dynamic>>> bookingsByDay = {};
+    for (var booking in _bookings) {
+      final start = booking['start_date'];
+      final end = booking['end_date'];
+      var current = DateTime.parse(start);
+      final endDate = DateTime.parse(end);
+      
+      while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
+        final key = DateFormat('yyyy-MM-dd').format(current);
+        if (!bookingsByDay.containsKey(key)) {
+          bookingsByDay[key] = [];
+        }
+        bookingsByDay[key]!.add(booking);
+        current = current.add(const Duration(days: 1));
+      }
+    }
+
     return Column(
       children: [
         TableCalendar(
@@ -471,8 +473,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             _focusedDay = focusedDay;
           },
           eventLoader: (day) {
-            final key = DateTime(day.year, day.month, day.day);
-            return _bookingsByDay[key] ?? [];
+            final key = DateFormat('yyyy-MM-dd').format(day);
+            return bookingsByDay[key] ?? [];
           },
           calendarStyle: CalendarStyle(
             weekendTextStyle: TextStyle(color: Colors.red[400]),
@@ -500,32 +502,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: _buildBookingsList(),
+          child: _buildBookingsList(bookingsByDay),
         ),
       ],
     );
   }
 
-  Widget _buildBookingsList() {
-    final key = DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day);
-    final dayBookings = _bookingsByDay[key] ?? [];
-    
-    // Raggruppa per box con conteggio
-    final Map<String, List<Booking>> bookingsByBox = {};
-    for (var booking in dayBookings) {
-      if (!bookingsByBox.containsKey(booking.boxId)) {
-        bookingsByBox[booking.boxId] = [];
-      }
-      bookingsByBox[booking.boxId]!.add(booking);
-    }
+  Widget _buildBookingsList(Map<String, List<Map<String, dynamic>>> bookingsByDay) {
+    final key = DateFormat('yyyy-MM-dd').format(_selectedDay);
+    final dayBookings = bookingsByDay[key] ?? [];
 
-    // Box liberi (con capienza residua)
-    final availableBoxes = boxBox.values.where((box) {
-      final boxBookings = dayBookings.where((b) => b.boxId == box.supabaseId).toList();
-      return boxBookings.length < box.capacity;
-    }).toList();
-
-    if (dayBookings.isEmpty && availableBoxes.isEmpty) {
+    if (dayBookings.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -537,7 +524,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               style: TextStyle(color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
-            if (boxBox.values.isNotEmpty && dogBox.values.isNotEmpty)
+            if (_boxes.isNotEmpty && _dogs.isNotEmpty)
               ElevatedButton.icon(
                 onPressed: () => _showAddBookingDialog(selectedDate: _selectedDay),
                 style: ElevatedButton.styleFrom(
@@ -552,162 +539,4 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(8),
-      children: [
-        // Mostra le prenotazioni esistenti raggruppate per box
-        if (dayBookings.isNotEmpty) ...[
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '📋 Prenotazioni del giorno:',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-          ),
-          ...bookingsByBox.entries.map((entry) {
-            final box = boxBox.values.firstWhere(
-              (b) => b.supabaseId == entry.key,
-              orElse: () => KennelBox(name: 'Box sconosciuto', capacity: 2),
-            );
-            final bookings = entry.value;
-            
-            return Card(
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              color: Colors.grey[50],
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.inventory_2, color: Colors.brown),
-                        const SizedBox(width: 8),
-                        Text(
-                          box.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const Spacer(),
-                        Chip(
-                          label: Text(
-                            '${bookings.length}/${box.capacity}',
-                            style: TextStyle(
-                              color: bookings.length >= box.capacity ? Colors.red : Colors.green,
-                            ),
-                          ),
-                          backgroundColor: Colors.grey[200],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ...bookings.map((booking) {
-                      final dog = dogBox.values.firstWhere(
-                        (d) => d.supabaseId == booking.dogId,
-                        orElse: () => Dog(name: 'Cane sconosciuto'),
-                      );
-                      // Colore diverso per Asilo vs Pensione
-                      final Color dogColor = dog.serviceType == 'asilo' 
-                          ? Colors.orange 
-                          : Colors.blue;
-                      
-                      return Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: dogColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: dogColor.withOpacity(0.3)),
-                        ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 14,
-                              backgroundColor: dogColor,
-                              child: Text(
-                                dog.name[0].toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    dog.name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  Text(
-                                    '${dog.serviceType == 'asilo' ? '🎨 Asilo' : '🏠 Pensione'} • ${booking.formattedStart} - ${booking.formattedEnd}${booking.notes != null ? ' 📝 ${booking.notes}' : ''}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                              onPressed: () => _deleteBooking(booking),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-        ],
-
-        // Mostra i box con spazio disponibile
-        if (availableBoxes.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              '✅ Box con spazio disponibile:',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green),
-            ),
-          ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: availableBoxes.map((box) {
-              final boxBookings = dayBookings.where((b) => b.boxId == box.supabaseId).toList();
-              final free = box.capacity - boxBookings.length;
-              return Chip(
-                label: Text('${box.name} (+$free)'),
-                backgroundColor: Colors.green[50],
-                avatar: const Icon(Icons.check_circle, color: Colors.green, size: 16),
-              );
-            }).toList(),
-          ),
-        ],
-
-        // Bottone per aggiungere prenotazione (sempre visibile)
-        const SizedBox(height: 16),
-        Center(
-          child: ElevatedButton.icon(
-            onPressed: () => _showAddBookingDialog(selectedDate: _selectedDay),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.brown,
-              foregroundColor: Colors.white,
-            ),
-            icon: const Icon(Icons.add),
-            label: const Text('➕ Aggiungi altra prenotazione'),
-          ),
-        ),
-      ],
-    );
-  }
-}
+    return List
