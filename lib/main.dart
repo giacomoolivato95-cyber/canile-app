@@ -24,36 +24,6 @@ void main() async {
   try {
     await initializeDateFormatting('it_IT', null);
 
-    // 🔥 FIREBASE
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    FirebaseMessaging messaging = FirebaseMessaging.instance;
-    NotificationSettings settings = await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      print('✅ Permesso notifiche concesso');
-      String? token;
-      if (kIsWeb) {
-        const vapidKey = "BPDkC_cpgWiBV2iRKURBWYRp7flKj2GFpanNhUOJaXdgcs2hTS3dRsmzrLnV_rI54GsQuNbbusjHKjiYxo9q6Cg"; // 🔥 SOSTITUISCI
-        token = await messaging.getToken(vapidKey: vapidKey);
-      } else {
-        token = await messaging.getToken();
-      }
-      print('📱 Token FCM: $token');
-    }
-
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('📩 Notifica in primo piano: ${message.notification?.title}');
-    });
-
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('📩 Utente ha cliccato sulla notifica');
-    });
 
     // SUPABASE
     await Supabase.initialize(
