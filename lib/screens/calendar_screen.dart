@@ -20,7 +20,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   List<Map<String, dynamic>> _bookings = [];
   List<Map<String, dynamic>> _dogs = [];
   List<Map<String, dynamic>> _boxes = [];
-  List<Map<String, dynamic>> _movimenti = [];
   bool _isLoading = true;
 
   final SupabaseClient supabase = Supabase.instance.client;
@@ -45,10 +44,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       
       final bookingsResponse = await supabase.from('bookings').select('*').order('start_date');
       _bookings = List<Map<String, dynamic>>.from(bookingsResponse);
-      
-      // 🔥 Carica gli spostamenti
-      final movimentiResponse = await supabase.from('movimenti').select('*');
-      _movimenti = List<Map<String, dynamic>>.from(movimentiResponse);
       
       if (_dogs.isEmpty) {
         final localDogs = dogBox.values.toList();
@@ -111,9 +106,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ============================================================
-  // 🔥 AGGIUNGI PRENOTAZIONE
-  // ============================================================
   void _showAddBookingDialog({DateTime? selectedDate}) async {
     final date = selectedDate ?? DateTime.now();
 
@@ -379,9 +371,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // ============================================================
-  // 🔥 ELIMINA PRENOTAZIONE
-  // ============================================================
   void _deleteBooking(Map<String, dynamic> booking) async {
     final supabaseId = booking['id'] as String?;
     if (supabaseId == null) {
@@ -427,309 +416,129 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
     );
   }
+  @override
+Widget build(BuildContext context) {
+  if (_isLoading) {
+    return const Center(child: CircularProgressIndicator());
+  }
 
-  // ============================================================
-  // 🔥 SPOSTA CANE
-  // ============================================================
-  void _showMoveDialog(Map<String, dynamic> booking) async {
-    final dog = _dogs.firstWhere(
-      (d) => d['id'] == booking['dog_id'],
-      orElse: () => {'name': 'Cane sconosciuto', 'id': ''},
-    );
-    final currentBox = _boxes.firstWhere(
-      (b) => b['id'] == booking['box_id'],
-      orElse: () => {'name': 'Box sconosciuto', 'id': ''},
-    );
-
-    final availableBoxes = _boxes.where((b) => b['id'] != booking['box_id']).toList();
-
-    if (availableBoxes.isEmpty) {
-      _showSnackBar('Nessun altro box disponibile per lo spostamento');
-      return;
+  final Map<String, List<Map<String, dynamic>>> bookingsByDay = {};
+  for (var booking in _bookings) {
+    final start = booking['start_date'] as String;
+    final end = booking['end_date'] as String;
+    var current = DateTime.parse(start);
+    final endDate = DateTime.parse(end);
+    
+    while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
+      final key = DateFormat('yyyy-MM-dd').format(current);
+      if (!bookingsByDay.containsKey(key)) {
+        bookingsByDay[key] = [];
+      }
+      bookingsByDay[key]!.add(booking);
+      current = current.add(const Duration(days: 1));
     }
+  }
 
-    Map<String, dynamic>? selectedBox = availableBoxes.first;
-    DateTime moveDate = DateTime.now();
-    final noteController = TextEditingController();
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('🔄 Sposta cane'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('🐕 ${dog['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text('📦 Box attuale: ${currentBox['name']}'),
-                        Text('📅 Periodo: ${booking['start_date']} → ${booking['end_date']}'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  DropdownButtonFormField<Map<String, dynamic>>(
-                    value: selectedBox,
-                    decoration: const InputDecoration(labelText: '📦 Sposta in *'),
-                    items: availableBoxes.map((box) {
-                      final isOccupied = _checkBoxOccupied(box['id'], moveDate);
-                      String label = box['name'] ?? '';
-                      if (isOccupied) {
-                        label += ' (occupato)';
-                      }
-                      return DropdownMenuItem<Map<String, dynamic>>(
-                        value: box,
-                        enabled: !isOccupied,
-                        child: Text(
-                          label,
-                          style: TextStyle(
-                            color: isOccupied ? Colors.red : Colors.black,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setDialogState(() {
-                        selectedBox = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 8),
-
-                  ListTile(
-                    title: const Text('📅 Data spostamento'),
-                    subtitle: Text(DateFormat('dd/MM/yyyy').format(moveDate)),
-                    leading: const Icon(Icons.calendar_today),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: moveDate,
-                                            onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: moveDate,
-                        firstDate: DateTime.parse(booking['start_date']),
-                        lastDate: DateTime.parse(booking['end_date']),
-                      );
-                      if (picked != null) {
-                        setDialogState(() {
-                          moveDate = picked;
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 8),
-
-                  TextField(
-                    controller: noteController,
-                    decoration: const InputDecoration(
-                      labelText: 'Note (opzionale)',
-                      hintText: 'es. Perché litigava con il vicino',
-                    ),
-                    maxLines: 2,
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Annulla'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (selectedBox == null) {
-                    _showSnackBar('Seleziona un box di destinazione');
-                    return;
-                  }
-                  Navigator.pop(context, true);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('🔄 Sposta'),
-              ),
-            ],
-          );
+  return Column(
+    children: [
+      TableCalendar(
+        firstDay: DateTime.utc(2020, 1, 1),
+        lastDay: DateTime.utc(2030, 12, 31),
+        focusedDay: _focusedDay,
+        selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+        onDaySelected: (selectedDay, focusedDay) {
+          setState(() {
+            _selectedDay = selectedDay;
+            _focusedDay = focusedDay;
+          });
         },
+        onDayLongPressed: (selectedDay, focusedDay) {
+          _showAddBookingDialog(selectedDate: selectedDay);
+        },
+        onPageChanged: (focusedDay) {
+          _focusedDay = focusedDay;
+        },
+        eventLoader: (day) {
+          final key = DateFormat('yyyy-MM-dd').format(day);
+          return bookingsByDay[key] ?? [];
+        },
+        calendarStyle: CalendarStyle(
+          weekendTextStyle: TextStyle(color: Colors.red[400]),
+          selectedDecoration: BoxDecoration(
+            color: Colors.brown,
+            shape: BoxShape.circle,
+          ),
+          todayDecoration: BoxDecoration(
+            color: Colors.brown[100],
+            shape: BoxShape.circle,
+          ),
+          markerDecoration: const BoxDecoration(
+            color: Colors.brown,
+            shape: BoxShape.circle,
+          ),
+        ),
+        headerStyle: HeaderStyle(
+          formatButtonVisible: false,
+          titleCentered: true,
+          titleTextFormatter: (date, locale) {
+            return DateFormat('MMMM yyyy', 'it').format(date);
+          },
+        ),
+        locale: 'it_IT',
+      ),
+      const Divider(height: 1),
+      Expanded(
+        child: _buildBookingsList(bookingsByDay),
+      ),
+    ],
+  );
+}
+
+Widget _buildBookingsList(Map<String, List<Map<String, dynamic>>> bookingsByDay) {
+  final key = DateFormat('yyyy-MM-dd').format(_selectedDay);
+  final dayBookings = bookingsByDay[key] ?? [];
+
+  if (dayBookings.isEmpty) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.pets, size: 48, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          Text(
+            'Nessuna prenotazione per questa data',
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 8),
+          if (_boxes.isNotEmpty && _dogs.isNotEmpty)
+            ElevatedButton.icon(
+              onPressed: () => _showAddBookingDialog(selectedDate: _selectedDay),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.brown,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('Aggiungi prenotazione'),
+            ),
+        ],
       ),
     );
-
-    if (result == true && selectedBox != null) {
-      setState(() => _isLoading = true);
-      try {
-        final data = {
-          'cane_id': booking['dog_id'],
-          'box_origine': booking['box_id'],
-          'box_destinazione': selectedBox['id'],
-          'data_movimento': DateFormat('yyyy-MM-dd').format(moveDate),
-          'note': noteController.text.trim().isEmpty 
-              ? 'Spostato da ${currentBox['name']} a ${selectedBox['name']} il ${DateFormat('dd/MM/yyyy').format(moveDate)}'
-              : noteController.text.trim(),
-        };
-
-        await supabase.from('movimenti').insert(data);
-        await _loadAllData();
-        _showSnackBar('✅ Cane spostato da ${currentBox['name']} a ${selectedBox['name']}!');
-      } catch (e) {
-        _showSnackBar('❌ Errore spostamento: $e');
-        setState(() => _isLoading = false);
-      }
-    }
   }
 
-  bool _checkBoxOccupied(String boxId, DateTime date) {
-    final dateStr = DateFormat('yyyy-MM-dd').format(date);
-    return _bookings.any((b) {
-      if (b['box_id'] != boxId) return false;
-      final start = b['start_date'];
-      final end = b['end_date'];
-      return dateStr.compareTo(start) >= 0 && dateStr.compareTo(end) <= 0;
-    });
-  }
+  return ListView(
+    padding: const EdgeInsets.all(8),
+    children: [
+      ...dayBookings.map((booking) {
+        final dog = _dogs.firstWhere(
+          (d) => d['id'] == booking['dog_id'],
+          orElse: () => {'name': 'Cane sconosciuto', 'service_type': 'pensione'},
+        );
+        final box = _boxes.firstWhere(
+          (b) => b['id'] == booking['box_id'],
+          orElse: () => {'name': 'Box sconosciuto', 'capacity': 2},
+        );
 
-  // ============================================================
-  // 🔥 BUILD
-  // ============================================================
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    final Map<String, List<Map<String, dynamic>>> bookingsByDay = {};
-    for (var booking in _bookings) {
-      final start = booking['start_date'] as String;
-      final end = booking['end_date'] as String;
-      var current = DateTime.parse(start);
-      final endDate = DateTime.parse(end);
-      
-      while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
-        final key = DateFormat('yyyy-MM-dd').format(current);
-        if (!bookingsByDay.containsKey(key)) {
-          bookingsByDay[key] = [];
-        }
-        bookingsByDay[key]!.add(booking);
-        current = current.add(const Duration(days: 1));
-      }
-    }
-
-    return Column(
-      children: [
-        TableCalendar(
-          firstDay: DateTime.utc(2020, 1, 1),
-          lastDay: DateTime.utc(2030, 12, 31),
-          focusedDay: _focusedDay,
-          selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-          onDaySelected: (selectedDay, focusedDay) {
-            setState(() {
-              _selectedDay = selectedDay;
-              _focusedDay = focusedDay;
-            });
-          },
-          onDayLongPressed: (selectedDay, focusedDay) {
-            _showAddBookingDialog(selectedDate: selectedDay);
-          },
-          onPageChanged: (focusedDay) {
-            _focusedDay = focusedDay;
-          },
-          eventLoader: (day) {
-            final key = DateFormat('yyyy-MM-dd').format(day);
-            return bookingsByDay[key] ?? [];
-          },
-          calendarStyle: CalendarStyle(
-            weekendTextStyle: TextStyle(color: Colors.red[400]),
-            selectedDecoration: BoxDecoration(
-              color: Colors.brown,
-              shape: BoxShape.circle,
-            ),
-            todayDecoration: BoxDecoration(
-              color: Colors.brown[100],
-              shape: BoxShape.circle,
-            ),
-            markerDecoration: const BoxDecoration(
-              color: Colors.brown,
-              shape: BoxShape.circle,
-            ),
-          ),
-          headerStyle: HeaderStyle(
-            formatButtonVisible: false,
-            titleCentered: true,
-            titleTextFormatter: (date, locale) {
-              return DateFormat('MMMM yyyy', 'it').format(date);
-            },
-          ),
-          locale: 'it_IT',
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: _buildBookingsList(bookingsByDay),
-        ),
-      ],
-    );
-  }
-
-  // ============================================================
-  // 🔥 LISTA PRENOTAZIONI DEL GIORNO
-  // ============================================================
-  Widget _buildBookingsList(Map<String, List<Map<String, dynamic>>> bookingsByDay) {
-    final key = DateFormat('yyyy-MM-dd').format(_selectedDay);
-    final dayBookings = bookingsByDay[key] ?? [];
-
-    if (dayBookings.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.pets, size: 48, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Nessuna prenotazione per questa data',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 8),
-            if (_boxes.isNotEmpty && _dogs.isNotEmpty)
-              ElevatedButton.icon(
-                onPressed: () => _showAddBookingDialog(selectedDate: _selectedDay),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.brown,
-                  foregroundColor: Colors.white,
-                ),
-                icon: const Icon(Icons.add),
-                label: const Text('➕ Aggiungi prenotazione'),
-              ),
-          ],
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(8),
-      children: [
-        ...dayBookings.map((booking) {
-          final dog = _dogs.firstWhere(
-            (d) => d['id'] == booking['dog_id'],
-            orElse: () => {'name': 'Cane sconosciuto', 'service_type': 'pensione'},
-          );
-          final box = _boxes.firstWhere(
-            (b) => b['id'] == booking['box_id'],
-            orElse: () => {'name': 'Box sconosciuto', 'capacity': 2},
-          );
-
-          return Card(
+                  return Card(
             margin: const EdgeInsets.symmetric(vertical: 4),
             child: ListTile(
               leading: CircleAvatar(
@@ -740,19 +549,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
               subtitle: Text(
                 '${box['name']} • ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['start_date'] as String))} - ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['end_date'] as String))}${booking['notes'] != null ? '\n📝 ${booking['notes']}' : ''}',
               ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.swap_horiz, color: Colors.orange),
-                    onPressed: () => _showMoveDialog(booking),
-                    tooltip: 'Sposta cane in un altro box',
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: () => _deleteBooking(booking),
-                  ),
-                ],
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                onPressed: () => _deleteBooking(booking),
               ),
             ),
           );
@@ -775,4 +574,3 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 }
-                
