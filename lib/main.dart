@@ -3,9 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'firebase_options.dart';
+
 import 'models/dog.dart';
 import 'models/kennel_box.dart';
 import 'models/booking.dart';
@@ -13,26 +11,21 @@ import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/sync_service.dart';
 
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print("📩 Notifica in background: ${message.notification?.title}");
-}
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
+    // Inizializza i dati locali (formato data)
     await initializeDateFormatting('it_IT', null);
 
-
-    // SUPABASE
+    // Inizializza Supabase
     await Supabase.initialize(
       url: 'https://rwdjpmgpqtebrnsvshty.supabase.co',
       anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ3ZGpwbWdwcXRlYnJuc3ZzaHR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3OTg1NzYsImV4cCI6MjEwMDM3NDU3Nn0.J381Men5RsiXVgukOlzVEO3mHRDdCdVIUXc5Xz8PFgc',
     );
     print('✅ Supabase inizializzato!');
 
-    // HIVE
+    // Inizializza Hive (database locale)
     await Hive.initFlutter();
     Hive.registerAdapter(DogAdapter());
     Hive.registerAdapter(KennelBoxAdapter());
@@ -43,16 +36,26 @@ void main() async {
     await Hive.openBox<Booking>('bookings');
     print('✅ Hive inizializzato!');
 
-    // SYNC
+    // Inizializza il Sync Service
     final syncService = SyncService();
     syncService.initialize();
 
+    // Sincronizza all'avvio (se online)
     if (await syncService.hasInternet()) {
       print('🔄 Sincronizzazione all\'avvio...');
-      await syncService.syncAll();
+      try {
+        final results = await syncService.syncAll();
+        print('✅ Sincronizzazione iniziale completata!');
+        print('📊 Risultati: $results');
+      } catch (e) {
+        print('❌ Errore sync iniziale: $e');
+      }
+    } else {
+      print('⚠️ Offline: sync all\'avvio saltato');
     }
 
     print('✅ APP INIZIALIZZATA COMPLETAMENTE! 🎉');
+
   } catch (e) {
     print('❌ Errore inizializzazione: $e');
   }
@@ -69,7 +72,10 @@ class MyApp extends StatelessWidget {
       title: 'Canile App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.brown),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.brown,
+          brightness: Brightness.light,
+        ),
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
           centerTitle: true,
