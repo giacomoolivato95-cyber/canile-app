@@ -245,7 +245,7 @@ IconButton(
   onPressed: () {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const BoxLayoutScreen()),
+      MaterialPageRoute(builder: (_) => BoxLayoutScreen()),
     );
   },
   tooltip: 'Panoramica Box',
