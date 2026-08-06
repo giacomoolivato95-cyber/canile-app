@@ -37,7 +37,7 @@ void main() async {
       print('✅ Permesso notifiche concesso');
       String? token;
       if (kIsWeb) {
-        const vapidKey = "BHN9v0lMcrH1l5vNnXmC1c9aNv1qM8lP5vGJk1vE0lM"; // 🔥 SOSTITUISCI
+        const vapidKey = "BPDkC_cpgWiBV2iRKURBWYRp7flKj2GFpanNhUOJaXdgcs2hTS3dRsmzrLnV_rI54GsQuNbbusjHKjiYxo9q6Cg"; // 🔥 SOSTITUISCI
         token = await messaging.getToken(vapidKey: vapidKey);
       } else {
         token = await messaging.getToken();
