@@ -498,6 +498,9 @@ Widget _buildBookingsList(Map<String, List<Map<String, dynamic>>> bookingsByDay)
   final key = DateFormat('yyyy-MM-dd').format(_selectedDay);
   final dayBookings = bookingsByDay[key] ?? [];
 
+  // ============================================================
+  // SE NON CI SONO PRENOTAZIONI
+  // ============================================================
   if (dayBookings.isEmpty) {
     return Center(
       child: Column(
@@ -518,16 +521,20 @@ Widget _buildBookingsList(Map<String, List<Map<String, dynamic>>> bookingsByDay)
                 foregroundColor: Colors.white,
               ),
               icon: const Icon(Icons.add),
-              label: const Text('Aggiungi prenotazione'),
+              label: const Text('➕ Aggiungi prenotazione'),
             ),
         ],
       ),
     );
   }
 
+  // ============================================================
+  // SE CI SONO PRENOTAZIONI
+  // ============================================================
   return ListView(
     padding: const EdgeInsets.all(8),
     children: [
+      // 🔥 LISTA DELLE PRENOTAZIONI DEL GIORNO
       ...dayBookings.map((booking) {
         final dog = _dogs.firstWhere(
           (d) => d['id'] == booking['dog_id'],
@@ -538,39 +545,41 @@ Widget _buildBookingsList(Map<String, List<Map<String, dynamic>>> bookingsByDay)
           orElse: () => {'name': 'Box sconosciuto', 'capacity': 2},
         );
 
-                  return Card(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            child: ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Colors.brown[100],
-                child: const Icon(Icons.pets, color: Colors.brown),
-              ),
-              title: Text(dog['name'] ?? ''),
-              subtitle: Text(
-                '${box['name']} • ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['start_date'] as String))} - ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['end_date'] as String))}${booking['notes'] != null ? '\n📝 ${booking['notes']}' : ''}',
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                onPressed: () => _deleteBooking(booking),
-              ),
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.brown[100],
+              child: const Icon(Icons.pets, color: Colors.brown),
             ),
-          );
-        }).toList(),
-
-        const SizedBox(height: 16),
-        Center(
-          child: ElevatedButton.icon(
-            onPressed: () => _showAddBookingDialog(selectedDate: _selectedDay),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.brown,
-              foregroundColor: Colors.white,
+            title: Text(dog['name'] ?? ''),
+            subtitle: Text(
+              '${box['name']} • ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['start_date'] as String))} - ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['end_date'] as String))}${booking['notes'] != null ? '\n📝 ${booking['notes']}' : ''}',
             ),
-            icon: const Icon(Icons.add),
-            label: const Text('➕ Aggiungi altra prenotazione'),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              onPressed: () => _deleteBooking(booking),
+            ),
           ),
+        );
+      }).toList(),
+
+      // ============================================================
+      // 🔥 PULSANTE "AGGIUNGI ALTRA PRENOTAZIONE" - SEMPRE VISIBILE
+      // ============================================================
+      const SizedBox(height: 16),
+      Center(
+        child: ElevatedButton.icon(
+          onPressed: () => _showAddBookingDialog(selectedDate: _selectedDay),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.brown,
+            foregroundColor: Colors.white,
+          ),
+          icon: const Icon(Icons.add),
+          label: const Text('➕ Aggiungi altra prenotazione'),
         ),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
+      ),
+      const SizedBox(height: 16),
+    ],
+  );
 }
