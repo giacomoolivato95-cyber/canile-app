@@ -20,7 +20,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   List<Map<String, dynamic>> _bookings = [];
   List<Map<String, dynamic>> _dogs = [];
   List<Map<String, dynamic>> _boxes = [];
-  List<Map<String, dynamic>> _movimenti = [];
   bool _isLoading = true;
 
   final SupabaseClient supabase = Supabase.instance.client;
@@ -45,9 +44,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       
       final bookingsResponse = await supabase.from('bookings').select('*').order('start_date');
       _bookings = List<Map<String, dynamic>>.from(bookingsResponse);
-      
-      final movimentiResponse = await supabase.from('movimenti').select('*');
-      _movimenti = List<Map<String, dynamic>>.from(movimentiResponse);
       
       if (_dogs.isEmpty) {
         final localDogs = dogBox.values.toList();
@@ -630,178 +626,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   // ============================================================
-  // 🔥 SPOSTA CANE
-  // ============================================================
-  void _showMoveDialog(Map<String, dynamic> booking) async {
-    final dog = _dogs.firstWhere(
-      (d) => d['id'] == booking['dog_id'],
-      orElse: () => {'name': 'Cane sconosciuto', 'id': ''},
-    );
-    final currentBox = _boxes.firstWhere(
-      (b) => b['id'] == booking['box_id'],
-      orElse: () => {'name': 'Box sconosciuto', 'id': ''},
-    );
-
-    final availableBoxes = _boxes.where((b) => b['id'] != booking['box_id']).toList();
-
-    if (availableBoxes.isEmpty) {
-      _showSnackBar('Nessun altro box disponibile per lo spostamento');
-      return;
-    }
-
-    Map<String, dynamic>? selectedBox = availableBoxes.first;
-    DateTime moveDate = DateTime.now();
-    final noteController = TextEditingController();
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('🔄 Sposta cane'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('🐕 ${dog['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text('📦 Box attuale: ${currentBox['name']}'),
-                        Text('📅 Periodo: ${booking['start_date']} → ${booking['end_date']}'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  DropdownButtonFormField<Map<String, dynamic>>(
-                    value: selectedBox,
-                    decoration: const InputDecoration(labelText: '📦 Sposta in *'),
-                    items: availableBoxes.map((box) {
-                      final isOccupied = _checkBoxOccupied(box['id'], moveDate);
-                      String label = box['name'] ?? '';
-                      if (isOccupied) {
-                        label += ' (occupato)';
-                      }
-                      return DropdownMenuItem<Map<String, dynamic>>(
-                        value: box,
-                        enabled: !isOccupied,
-                        child: Text(
-                          label,
-                          style: TextStyle(
-                            color: isOccupied ? Colors.red : Colors.black,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setDialogState(() {
-                        selectedBox = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 8),
-
-                  ListTile(
-                    title: const Text('📅 Data spostamento'),
-                    subtitle: Text(DateFormat('dd/MM/yyyy').format(moveDate)),
-                    leading: const Icon(Icons.calendar_today),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: moveDate,
-                        firstDate: DateTime.parse(booking['start_date']),
-                        lastDate: DateTime.parse(booking['end_date']),
-                      );
-                      if (picked != null) {
-                        setDialogState(() {
-                          moveDate = picked;
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 8),
-
-                  TextField(
-                    controller: noteController,
-                    decoration: const InputDecoration(
-                      labelText: 'Note (opzionale)',
-                      hintText: 'es. Perché litigava con il vicino',
-                    ),
-                    maxLines: 2,
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Annulla'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (selectedBox == null) {
-                    _showSnackBar('Seleziona un box di destinazione');
-                    return;
-                  }
-                  Navigator.pop(context, true);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('🔄 Sposta'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    if (result == true && selectedBox != null) {
-      setState(() => _isLoading = true);
-      try {
-        final String boxDestinazione = selectedBox!['id'] as String;
-        final String boxOrigine = booking['box_id'] as String;
-        
-        final data = {
-          'cane_id': booking['dog_id'],
-          'box_origine': boxOrigine,
-          'box_destinazione': boxDestinazione,
-          'data_movimento': DateFormat('yyyy-MM-dd').format(moveDate),
-          'note': noteController.text.trim().isEmpty 
-              ? 'Spostato da ${currentBox['name']} a ${selectedBox['name']} il ${DateFormat('dd/MM/yyyy').format(moveDate)}'
-              : noteController.text.trim(),
-        };
-
-        await supabase.from('movimenti').insert(data);
-        await _loadAllData();
-        _showSnackBar('✅ Cane spostato da ${currentBox['name']} a ${selectedBox['name']}!');
-      } catch (e) {
-        _showSnackBar('❌ Errore spostamento: $e');
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  bool _checkBoxOccupied(String boxId, DateTime date) {
-    final dateStr = DateFormat('yyyy-MM-dd').format(date);
-    return _bookings.any((b) {
-      if (b['box_id'] != boxId) return false;
-      final start = b['start_date'];
-      final end = b['end_date'];
-      return dateStr.compareTo(start) >= 0 && dateStr.compareTo(end) <= 0;
-    });
-  }
-
-  // ============================================================
   // 🔥 BUILD
   // ============================================================
   @override
@@ -1001,11 +825,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     icon: const Icon(Icons.edit, color: Colors.blue),
                     onPressed: () => _showEditBookingDialog(booking),
                     tooltip: 'Modifica prenotazione',
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.swap_horiz, color: Colors.orange),
-                    onPressed: () => _showMoveDialog(booking),
-                    tooltip: 'Sposta cane in un altro box',
                   ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
