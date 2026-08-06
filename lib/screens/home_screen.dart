@@ -61,7 +61,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // ============ PERFORM SYNC ============
   Future<void> _performSync() async {
     if (_isSyncing) {
       print('⚠️ Sync già in corso...');
@@ -131,7 +130,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============ ESPORTA DATI ============
   Future<void> _exportLocalData() async {
     try {
       final dogBox = Hive.box<Dog>('dogs');
@@ -226,7 +224,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
-          // Indicatore di stato online/offline
           if (!_isOnline)
             Container(
               margin: const EdgeInsets.only(right: 8),
@@ -242,14 +239,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           
-          // Pulsante esporta dati
           IconButton(
             icon: const Icon(Icons.download, color: Colors.white),
             onPressed: _exportLocalData,
             tooltip: 'Esporta dati locali',
           ),
           
-          // Pulsante sincronizza
           IconButton(
             icon: Icon(
               _isSyncing ? Icons.sync_problem : Icons.sync,
@@ -262,7 +257,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 : 'Offline - sincronizzazione non disponibile',
           ),
           
-          // Pulsante Logout
           IconButton(
             icon: const Icon(Icons.exit_to_app),
             onPressed: _logout,
