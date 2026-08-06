@@ -1056,4 +1056,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
               foregroundColor: Colors.white,
             ),
             icon: const Icon(Icons.add),
-            label: const Text('➕ Aggiungi altra pre
+            label: const Text('➕ Aggiungi altra prenotazione'),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+}
