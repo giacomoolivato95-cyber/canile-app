@@ -590,8 +590,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       setState(() => _isLoading = true);
       try {
         final data = {
-          'dog_id': selectedDog['id'],
-          'box_id': selectedBox['id'],
+          'dog_id': selectedDog!['id'] as String,
+          'box_id': selectedBox!['id'] as String,
           'start_date': DateFormat('yyyy-MM-dd').format(startDate),
           'end_date': DateFormat('yyyy-MM-dd').format(endDate),
           'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
@@ -684,9 +684,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
           onPageChanged: (focusedDay) {
             _focusedDay = focusedDay;
           },
-          // 🔥 CALENDAR BUILDERS PER LE BARRE
           calendarBuilders: CalendarBuilders(
-            dayBuilder: (context, date, _) {
+            // 🔥 Personalizza il giorno con le barre
+            defaultBuilder: (context, date, _) {
               final dayBookings = bookingsForDay[date] ?? [];
               
               return Container(
@@ -859,13 +859,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 🔥 PULSANTE MODIFICA
                   IconButton(
                     icon: const Icon(Icons.edit, color: Colors.blue),
                     onPressed: () => _showEditBookingDialog(booking),
                     tooltip: 'Modifica prenotazione',
                   ),
-                  // PULSANTE ELIMINA
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     onPressed: () => _deleteBooking(booking),
