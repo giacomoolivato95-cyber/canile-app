@@ -51,10 +51,17 @@
     ============================================================
     Flutter caricherà l'app qui.
   -->
-  <script>
-    // Il tuo codice Flutter verrà iniettato qui
-    // (non modificare questa parte)
-  </script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('firebase-messaging-sw.js')
+      .then(function(registration) {
+        console.log('✅ Service Worker registrato:', registration);
+      })
+      .catch(function(error) {
+        console.log('❌ Errore registrazione Service Worker:', error);
+      });
+  }
+</script>
 </head>
 <body>
   <!-- Flutter rendererà l'app qui -->
