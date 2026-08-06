@@ -1,6 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
-import 'package:flutter/material.dart';  // 🔥 AGGIUNGI QUESTO IMPORT
+import 'package:flutter/material.dart';
 
 part 'dog.g.dart';
 
@@ -33,6 +33,10 @@ class Dog extends HiveObject {
   @HiveField(8)
   String serviceType;
 
+  // 🔥 NUOVO CAMPO: URL della foto del cane
+  @HiveField(9)
+  String? urlFoto;
+
   Dog({
     this.supabaseId,
     required this.name,
@@ -41,6 +45,7 @@ class Dog extends HiveObject {
     this.notes,
     this.breed,
     this.serviceType = 'pensione',
+    this.urlFoto,
     this.updatedAt,
     this.synced = false,
   }) {
