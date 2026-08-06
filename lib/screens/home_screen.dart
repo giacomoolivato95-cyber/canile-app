@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 
@@ -132,10 +133,66 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============ 🔥 MOSTRA TOKEN FCM (doppio tap sul titolo) ============
+  Future<void> _showFcmToken() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+      String? token;
+      
+      // Per il web, potrebbe servire la VAPID key
+      // Se su web, usa la VAPID key che hai in main.dart
+      token = await messaging.getToken();
+      
+      if (token != null) {
+        // Copia il token nella clipboard
+        await Clipboard.setData(ClipboardData(text: token));
+        
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('📱 Token FCM'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Token copiato nella clipboard!'),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    token,
+                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    softWrap: true,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Chiudi'),
+              ),
+            ],
+          ),
+        );
+        
+        _showSnackBar('✅ Token copiato negli appunti!');
+      } else {
+        _showSnackBar('❌ Token non disponibile. Assicurati che Firebase sia configurato.');
+      }
+    } catch (e) {
+      _showSnackBar('❌ Errore recupero token: $e');
+      print('❌ Errore token FCM: $e');
+    }
+  }
+
   // ============ ESPORTA DATI ============
   Future<void> _exportLocalData() async {
     try {
-      // Verifica che i box siano aperti
       final dogBox = Hive.box<Dog>('dogs');
       final boxBox = Hive.box<KennelBox>('kennel_boxes');
       final bookingBox = Hive.box<Booking>('bookings');
@@ -166,7 +223,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final jsonString = jsonEncode(data);
       await Clipboard.setData(ClipboardData(text: jsonString));
       
-      // Mostra il dialog con il conteggio
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -215,18 +271,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            const Text('Canile App'),
-            if (_syncStatus.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Text(
-                  _syncStatus,
-                  style: const TextStyle(fontSize: 12),
+        title: GestureDetector(
+          onDoubleTap: _showFcmToken,  // 🔥 DOPPIO TAP PER IL TOKEN
+          child: Row(
+            children: [
+              const Text('Canile App'),
+              if (_syncStatus.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    _syncStatus,
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
         actions: [
           // Indicatore di stato online/offline
@@ -245,14 +304,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           
-          // 🔥 PULSANTE ESPORTA DATI (visibile)
+          // Pulsante esporta dati
           IconButton(
             icon: const Icon(Icons.download, color: Colors.white),
             onPressed: _exportLocalData,
             tooltip: 'Esporta dati locali',
           ),
           
-          // 🔥 PULSANTE SYNCHRONIZE
+          // Pulsante sincronizza
           IconButton(
             icon: Icon(
               _isSyncing ? Icons.sync_problem : Icons.sync,
