@@ -34,6 +34,21 @@ class _BoxLayoutScreenState extends State<BoxLayoutScreen> {
       final movimentiRes = await supabase.from('movimenti').select('*');
 
       _boxes = List<Map<String, dynamic>>.from(boxesRes);
+      
+      // 🔥 ORDINA I BOX NUMERICAMENTE (estrae il numero dal nome)
+      _boxes.sort((a, b) {
+        final nameA = a['name'] ?? '';
+        final nameB = b['name'] ?? '';
+        
+        // Estrae il numero dal nome (es. "Box 10" → 10)
+        int getNumber(String name) {
+          final match = RegExp(r'\d+').firstMatch(name);
+          return match != null ? int.parse(match.group(0)!) : 999;
+        }
+        
+        return getNumber(nameA).compareTo(getNumber(nameB));
+      });
+
       _dogs = List<Map<String, dynamic>>.from(dogsRes);
       _bookings = List<Map<String, dynamic>>.from(bookingsRes);
       _movimenti = List<Map<String, dynamic>>.from(movimentiRes);
