@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
+import 'box_layout_screen.dart';
 
 import 'calendar_screen.dart';
 import 'dogs_screen.dart';
