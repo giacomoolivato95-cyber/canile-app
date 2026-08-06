@@ -46,7 +46,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final bookingsResponse = await supabase.from('bookings').select('*').order('start_date');
       _bookings = List<Map<String, dynamic>>.from(bookingsResponse);
       
-      // 🔥 Carica gli spostamenti
       final movimentiResponse = await supabase.from('movimenti').select('*');
       _movimenti = List<Map<String, dynamic>>.from(movimentiResponse);
       
@@ -594,9 +593,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (result == true && selectedDog != null && selectedBox != null) {
       setState(() => _isLoading = true);
       try {
+        final String dogId = selectedDog!['id'] as String;
+        final String boxId = selectedBox!['id'] as String;
+
         final data = {
-          'dog_id': selectedDog!['id'] as String,
-          'box_id': selectedBox!['id'] as String,
+          'dog_id': dogId,
+          'box_id': boxId,
           'start_date': DateFormat('yyyy-MM-dd').format(startDate),
           'end_date': DateFormat('yyyy-MM-dd').format(endDate),
           'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
@@ -766,10 +768,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (result == true && selectedBox != null) {
       setState(() => _isLoading = true);
       try {
+        final String boxDestinazione = selectedBox!['id'] as String;
+        final String boxOrigine = booking['box_id'] as String;
+        
         final data = {
           'cane_id': booking['dog_id'],
-          'box_origine': booking['box_id'],
-          'box_destinazione': selectedBox['id'],
+          'box_origine': boxOrigine,
+          'box_destinazione': boxDestinazione,
           'data_movimento': DateFormat('yyyy-MM-dd').format(moveDate),
           'note': noteController.text.trim().isEmpty 
               ? 'Spostato da ${currentBox['name']} a ${selectedBox['name']} il ${DateFormat('dd/MM/yyyy').format(moveDate)}'
@@ -882,8 +887,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             markerBuilder: (context, date, events) {
               if (events.isEmpty) return const SizedBox.shrink();
               
-              // Prendi i primi 2 cani
-              final names = events.take(2).map((e) {
+              final List<Map<String, dynamic>> eventList = events.cast<Map<String, dynamic>>();
+              final names = eventList.take(2).map((e) {
                 final dog = _dogs.firstWhere(
                   (d) => d['id'] == e['dog_id'],
                   orElse: () => {'name': '?'},
@@ -891,7 +896,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 return dog['name'] as String;
               }).join(' ');
               
-              final count = events.length;
+              final count = eventList.length;
               
               return Container(
                 margin: const EdgeInsets.only(top: 2),
@@ -992,19 +997,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 🔥 PULSANTE MODIFICA
                   IconButton(
                     icon: const Icon(Icons.edit, color: Colors.blue),
                     onPressed: () => _showEditBookingDialog(booking),
                     tooltip: 'Modifica prenotazione',
                   ),
-                  // 🔥 PULSANTE SPOSTA
                   IconButton(
                     icon: const Icon(Icons.swap_horiz, color: Colors.orange),
                     onPressed: () => _showMoveDialog(booking),
                     tooltip: 'Sposta cane in un altro box',
                   ),
-                  // PULSANTE ELIMINA
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     onPressed: () => _deleteBooking(booking),
