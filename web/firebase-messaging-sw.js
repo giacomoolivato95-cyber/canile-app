@@ -1,7 +1,6 @@
 importScripts("https://www.gstatic.com/firebasejs/10.12.4/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.12.4/firebase-messaging-compat.js");
 
-// 🔥 INSERISCI I TUOI DATI QUI (li hai appena copiati)
 const firebaseConfig = {
   apiKey: "AIzaSyBEkv6cH_cLUMiq3qoXlybvnuan3Em94WQ",
   authDomain: "canilepensioni.firebaseapp.com",
@@ -13,14 +12,8 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-
 const messaging = firebase.messaging();
 
-// Ascolta i messaggi in background
 messaging.onBackgroundMessage((payload) => {
-  console.log("📩 Notifica in background ricevuta:", payload);
-  
-  // La notifica verrà mostrata automaticamente dal browser
-  // se il payload contiene il campo 'notification'
-  return true;
+  console.log("📩 Notifica in background:", payload);
 });
