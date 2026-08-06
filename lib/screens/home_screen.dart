@@ -223,6 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
           ],
         ),
+        
         actions: [
           if (!_isOnline)
             Container(
@@ -238,7 +239,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          
+          // Pulsante per la panoramica box (icona griglia)
+IconButton(
+  icon: const Icon(Icons.grid_view, color: Colors.white),
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const BoxLayoutScreen()),
+    );
+  },
+  tooltip: 'Panoramica Box',
+),
           IconButton(
             icon: const Icon(Icons.download, color: Colors.white),
             onPressed: _exportLocalData,
