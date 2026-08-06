@@ -106,9 +106,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ============================================================
-  // 🔥 AGGIUNGI PRENOTAZIONE
-  // ============================================================
   void _showAddBookingDialog({DateTime? selectedDate}) async {
     final date = selectedDate ?? DateTime.now();
 
@@ -205,7 +202,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     }).toList(),
                     onChanged: (value) {
                       setDialogState(() {
-                        selectedDog = value);
+                        selectedDog = value;
                       });
                     },
                   ),
@@ -374,9 +371,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // ============================================================
-  // 🔥 ELIMINA PRENOTAZIONE
-  // ============================================================
   void _deleteBooking(Map<String, dynamic> booking) async {
     final supabaseId = booking['id'] as String?;
     if (supabaseId == null) {
@@ -423,9 +417,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ============================================================
-  // 🔥 MODIFICA PRENOTAZIONE
-  // ============================================================
   void _showEditBookingDialog(Map<String, dynamic> booking) async {
     final currentDog = _dogs.firstWhere(
       (d) => d['id'] == booking['dog_id'],
@@ -625,16 +616,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
-  // ============================================================
-  // 🔥 BUILD
-  // ============================================================
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    // Raggruppa le prenotazioni per data (per la lista)
     final Map<DateTime, List<Map<String, dynamic>>> bookingsByDay = {};
     for (var booking in _bookings) {
       final start = DateTime.parse(booking['start_date'] as String);
@@ -647,23 +634,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           bookingsByDay[key] = [];
         }
         bookingsByDay[key]!.add(booking);
-        current = current.add(const Duration(days: 1));
-      }
-    }
-
-    // Raggruppa le prenotazioni per data (per i marker)
-    final Map<DateTime, List<Map<String, dynamic>>> bookingsForDay = {};
-    for (var booking in _bookings) {
-      final start = DateTime.parse(booking['start_date'] as String);
-      final end = DateTime.parse(booking['end_date'] as String);
-      var current = start;
-      
-      while (current.isBefore(end) || current.isAtSameMomentAs(end)) {
-        final key = DateTime(current.year, current.month, current.day);
-        if (!bookingsForDay.containsKey(key)) {
-          bookingsForDay[key] = [];
-        }
-        bookingsForDay[key]!.add(booking);
         current = current.add(const Duration(days: 1));
       }
     }
@@ -688,7 +658,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             _focusedDay = focusedDay;
           },
           eventLoader: (day) {
-            final dayBookings = bookingsForDay[day] ?? [];
+            final dayBookings = bookingsByDay[day] ?? [];
             return dayBookings;
           },
           calendarStyle: CalendarStyle(
@@ -708,105 +678,37 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
           calendarBuilders: CalendarBuilders(
-            // 🔥 PERSONALIZZA IL GIORNO CON COLORI
-            defaultBuilder: (context, date, _) {
-              final dayBookings = bookingsForDay[date] ?? [];
-              final hasBookings = dayBookings.isNotEmpty;
+            markerBuilder: (context, date, events) {
+              if (events.isEmpty) return const SizedBox.shrink();
               
-              // 🔥 DETERMINA IL COLORE DI SFONDO
-              Color? backgroundColor;
+              final List<Map<String, dynamic>> eventList = events.cast<Map<String, dynamic>>();
+              final names = eventList.take(2).map((e) {
+                final dog = _dogs.firstWhere(
+                  (d) => d['id'] == e['dog_id'],
+                  orElse: () => {'name': '?'},
+                );
+                return dog['name'] as String;
+              }).join(' ');
               
-              if (hasBookings) {
-                // Conta i tipi di servizio
-                int pensioneCount = 0;
-                int asiloCount = 0;
-                
-                for (var booking in dayBookings) {
-                  final dog = _dogs.firstWhere(
-                    (d) => d['id'] == booking['dog_id'],
-                    orElse: () => {'service_type': 'pensione'},
-                  );
-                  if (dog['service_type'] == 'asilo') {
-                    asiloCount++;
-                  } else {
-                    pensioneCount++;
-                  }
-                }
-                
-                if (asiloCount > 0 && pensioneCount > 0) {
-                  // 🟨 MISTO: Asilo + Pensione → sfondo diviso
-                  return Container(
-                    margin: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      color: isSameDay(date, _selectedDay) 
-                          ? Colors.brown.withOpacity(0.3) 
-                          : null,
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Stack(
-                        children: [
-                          // Metà arancione (Asilo)
-                          Positioned.fill(
-                            child: Container(
-                              color: Colors.orange.shade100,
-                            ),
-                          ),
-                          // Metà azzurra (Pensione) - solo metà destra
-                          Positioned.fill(
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: Container(
-                                width: MediaQuery.of(context).size.width / 2,
-                                color: Colors.blue.shade100,
-                              ),
-                            ),
-                          ),
-                          // Contenuto sopra
-                          Positioned.fill(
-                            child: _buildDayContent(
-                              date: date,
-                              dayBookings: dayBookings,
-                              hasBookings: hasBookings,
-                              isSelected: isSameDay(date, _selectedDay),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                } else if (asiloCount > 0) {
-                  // 🟧 SOLO ASILO
-                  backgroundColor = Colors.orange.shade100;
-                } else {
-                  // 🟦 SOLO PENSIONE
-                  backgroundColor = Colors.blue.shade100;
-                }
-              } else {
-                // 🟫 VUOTO: grigio chiaro
-                backgroundColor = Colors.grey.shade100;
-              }
+              final count = eventList.length;
               
               return Container(
-                margin: const EdgeInsets.all(2),
+                margin: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
                 decoration: BoxDecoration(
-                  color: isSameDay(date, _selectedDay) 
-                      ? Colors.brown.withOpacity(0.3) 
-                      : backgroundColor,
-                  borderRadius: BorderRadius.circular(8),
-                  border: hasBookings
-                      ? Border.all(
-                          color: _getBorderColor(dayBookings),
-                          width: 1.5,
-                        )
-                      : null,
+                  color: Colors.brown.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(4),
                 ),
-                child: _buildDayContent(
-                  date: date,
-                  dayBookings: dayBookings,
-                  hasBookings: hasBookings,
-                  isSelected: isSameDay(date, _selectedDay),
+                child: Text(
+                  count > 2 ? '$names +${count - 2}' : names,
+                  style: const TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.brown,
+                  ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               );
             },
@@ -828,152 +730,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  // ============================================================
-  // 🔥 CONTENUTO DEL GIORNO
-  // ============================================================
-  Widget _buildDayContent({
-    required DateTime date,
-    required List<Map<String, dynamic>> dayBookings,
-    required bool hasBookings,
-    required bool isSelected,
-  }) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Numero del giorno
-        Text(
-          '${date.day}',
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: date.weekday == 6 || date.weekday == 7
-                ? Colors.red[400]
-                : null,
-          ),
-        ),
-        // Nomi dei cani (max 2)
-        if (hasBookings)
-          Expanded(
-            child: ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: dayBookings.length > 2 ? 2 : dayBookings.length,
-              itemBuilder: (context, index) {
-                final booking = dayBookings[index];
-                final dog = _dogs.firstWhere(
-                  (d) => d['id'] == booking['dog_id'],
-                  orElse: () => {'name': '?', 'service_type': 'pensione'},
-                );
-                final color = dog['service_type'] == 'asilo' 
-                    ? Colors.deepOrange 
-                    : Colors.blue;
-                
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: Text(
-                    dog['name'] ?? '?',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 7,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                );
-              },
-            ),
-          ),
-        if (dayBookings.length > 2)
-          Text(
-            '+${dayBookings.length - 2}',
-            style: TextStyle(
-              fontSize: 8,
-              color: Colors.grey[600],
-            ),
-          ),
-        // Legenda colori (pallini)
-        if (hasBookings)
-          Container(
-            margin: const EdgeInsets.only(top: 1),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (dayBookings.any((b) {
-                  final dog = _dogs.firstWhere(
-                    (d) => d['id'] == b['dog_id'],
-                    orElse: () => {'service_type': 'pensione'},
-                  );
-                  return dog['service_type'] == 'asilo';
-                }))
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                      color: Colors.deepOrange,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                if (dayBookings.any((b) {
-                  final dog = _dogs.firstWhere(
-                    (d) => d['id'] == b['dog_id'],
-                    orElse: () => {'service_type': 'pensione'},
-                  );
-                  return dog['service_type'] == 'pensione';
-                }))
-                  Container(
-                    width: 6,
-                    height: 6,
-                    margin: const EdgeInsets.only(left: 4),
-                    decoration: const BoxDecoration(
-                      color: Colors.blue,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  // ============================================================
-  // 🔥 COLORE DEL BORDO
-  // ============================================================
-  Color _getBorderColor(List<Map<String, dynamic>> dayBookings) {
-    int pensioneCount = 0;
-    int asiloCount = 0;
-    
-    for (var booking in dayBookings) {
-      final dog = _dogs.firstWhere(
-        (d) => d['id'] == booking['dog_id'],
-        orElse: () => {'service_type': 'pensione'},
-      );
-      if (dog['service_type'] == 'asilo') {
-        asiloCount++;
-      } else {
-        pensioneCount++;
-      }
-    }
-    
-    if (asiloCount > 0 && pensioneCount > 0) {
-      return Colors.purple.shade400;
-    } else if (asiloCount > 0) {
-      return Colors.deepOrange.shade400;
-    } else {
-      return Colors.blue.shade400;
-    }
-  }
-
-  // ============================================================
-  // 🔥 LISTA PRENOTAZIONI DEL GIORNO
-  // ============================================================
   Widget _buildBookingsList(Map<DateTime, List<Map<String, dynamic>>> bookingsByDay) {
     final key = DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day);
     final dayBookings = bookingsByDay[key] ?? [];
