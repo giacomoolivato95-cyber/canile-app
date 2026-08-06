@@ -106,6 +106,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  // ============================================================
+  // 🔥 AGGIUNGI PRENOTAZIONE
+  // ============================================================
   void _showAddBookingDialog({DateTime? selectedDate}) async {
     final date = selectedDate ?? DateTime.now();
 
@@ -371,6 +374,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  // ============================================================
+  // 🔥 ELIMINA PRENOTAZIONE
+  // ============================================================
   void _deleteBooking(Map<String, dynamic> booking) async {
     final supabaseId = booking['id'] as String?;
     if (supabaseId == null) {
@@ -417,25 +423,244 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  // ============================================================
+  // 🔥 MODIFICA PRENOTAZIONE
+  // ============================================================
+  void _showEditBookingDialog(Map<String, dynamic> booking) async {
+    final currentDog = _dogs.firstWhere(
+      (d) => d['id'] == booking['dog_id'],
+      orElse: () => {'name': 'Cane sconosciuto', 'id': ''},
+    );
+    final currentBox = _boxes.firstWhere(
+      (b) => b['id'] == booking['box_id'],
+      orElse: () => {'name': 'Box sconosciuto', 'id': ''},
+    );
+
+    Map<String, dynamic>? selectedDog = currentDog;
+    Map<String, dynamic>? selectedBox = currentBox;
+    DateTime startDate = DateTime.parse(booking['start_date']);
+    DateTime endDate = DateTime.parse(booking['end_date']);
+    final notesController = TextEditingController(text: booking['notes'] ?? '');
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('✏️ Modifica prenotazione'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('🐕 ${currentDog['name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text('📦 Box attuale: ${currentBox['name']}'),
+                        Text('📅 ${booking['start_date']} → ${booking['end_date']}'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  DropdownButtonFormField<Map<String, dynamic>>(
+                    value: selectedDog,
+                    decoration: const InputDecoration(labelText: 'Cane *'),
+                    items: _dogs.map((dog) {
+                      return DropdownMenuItem<Map<String, dynamic>>(
+                        value: dog,
+                        child: Text(dog['name'] ?? ''),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        selectedDog = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  DropdownButtonFormField<Map<String, dynamic>>(
+                    value: selectedBox,
+                    decoration: const InputDecoration(labelText: 'Box *'),
+                    items: _boxes.map((box) {
+                      return DropdownMenuItem<Map<String, dynamic>>(
+                        value: box,
+                        child: Text(box['name'] ?? ''),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        selectedBox = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  ListTile(
+                    title: const Text('Data inizio'),
+                    subtitle: Text(DateFormat('dd/MM/yyyy').format(startDate)),
+                    leading: const Icon(Icons.calendar_today),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: startDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030),
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          startDate = picked;
+                          if (endDate.isBefore(startDate)) {
+                            endDate = startDate;
+                          }
+                        });
+                      }
+                    },
+                  ),
+
+                  ListTile(
+                    title: const Text('Data fine'),
+                    subtitle: Text(DateFormat('dd/MM/yyyy').format(endDate)),
+                    leading: const Icon(Icons.calendar_today),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: endDate,
+                        firstDate: startDate,
+                        lastDate: DateTime(2030),
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          endDate = picked;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+
+                  TextField(
+                    controller: notesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Note (opzionale)',
+                      hintText: 'es. dieta speciale, terapia...',
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Annulla'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (selectedDog == null) {
+                    _showSnackBar('Seleziona un cane');
+                    return;
+                  }
+                  if (selectedBox == null) {
+                    _showSnackBar('Seleziona un box');
+                    return;
+                  }
+                  Navigator.pop(context, true);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('💾 Salva modifiche'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result == true && selectedDog != null && selectedBox != null) {
+      setState(() => _isLoading = true);
+      try {
+        final data = {
+          'dog_id': selectedDog['id'],
+          'box_id': selectedBox['id'],
+          'start_date': DateFormat('yyyy-MM-dd').format(startDate),
+          'end_date': DateFormat('yyyy-MM-dd').format(endDate),
+          'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        };
+
+        await supabase.from('bookings').update(data).match({'id': booking['id']});
+        
+        final localBooking = bookingBox.values.firstWhere(
+          (b) => b.supabaseId == booking['id'],
+          orElse: () => Booking(dogId: '', boxId: '', startDate: DateTime.now(), endDate: DateTime.now()),
+        );
+        if (localBooking.dogId.isNotEmpty) {
+          localBooking.dogId = data['dog_id'] as String;
+          localBooking.boxId = data['box_id'] as String;
+          localBooking.startDate = startDate;
+          localBooking.endDate = endDate;
+          localBooking.notes = data['notes'];
+          localBooking.synced = true;
+          await localBooking.save();
+        }
+
+        await _loadAllData();
+        _showSnackBar('✅ Prenotazione modificata!');
+      } catch (e) {
+        _showSnackBar('❌ Errore: $e');
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // ============================================================
+  // 🔥 BUILD
+  // ============================================================
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final Map<String, List<Map<String, dynamic>>> bookingsByDay = {};
+    // Raggruppa le prenotazioni per data (per la lista)
+    final Map<DateTime, List<Map<String, dynamic>>> bookingsByDay = {};
     for (var booking in _bookings) {
-      final start = booking['start_date'] as String;
-      final end = booking['end_date'] as String;
-      var current = DateTime.parse(start);
-      final endDate = DateTime.parse(end);
+      final start = DateTime.parse(booking['start_date'] as String);
+      final end = DateTime.parse(booking['end_date'] as String);
+      var current = start;
       
-      while (current.isBefore(endDate) || current.isAtSameMomentAs(endDate)) {
-        final key = DateFormat('yyyy-MM-dd').format(current);
+      while (current.isBefore(end) || current.isAtSameMomentAs(end)) {
+        final key = DateTime(current.year, current.month, current.day);
         if (!bookingsByDay.containsKey(key)) {
           bookingsByDay[key] = [];
         }
         bookingsByDay[key]!.add(booking);
+        current = current.add(const Duration(days: 1));
+      }
+    }
+
+    // Raggruppa le prenotazioni per data (per le barre)
+    final Map<DateTime, List<Map<String, dynamic>>> bookingsForDay = {};
+    for (var booking in _bookings) {
+      final start = DateTime.parse(booking['start_date'] as String);
+      final end = DateTime.parse(booking['end_date'] as String);
+      var current = start;
+      
+      while (current.isBefore(end) || current.isAtSameMomentAs(end)) {
+        final key = DateTime(current.year, current.month, current.day);
+        if (!bookingsForDay.containsKey(key)) {
+          bookingsForDay[key] = [];
+        }
+        bookingsForDay[key]!.add(booking);
         current = current.add(const Duration(days: 1));
       }
     }
@@ -459,19 +684,97 @@ class _CalendarScreenState extends State<CalendarScreen> {
           onPageChanged: (focusedDay) {
             _focusedDay = focusedDay;
           },
-          eventLoader: (day) {
-            final key = DateFormat('yyyy-MM-dd').format(day);
-            return bookingsByDay[key] ?? [];
-          },
+          // 🔥 CALENDAR BUILDERS PER LE BARRE
+          calendarBuilders: CalendarBuilders(
+            dayBuilder: (context, date, _) {
+              final dayBookings = bookingsForDay[date] ?? [];
+              
+              return Container(
+                margin: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: isSameDay(date, _selectedDay) 
+                      ? Colors.brown.withOpacity(0.2) 
+                      : null,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Numero del giorno
+                    Text(
+                      '${date.day}',
+                      style: TextStyle(
+                        fontWeight: isSameDay(date, _selectedDay) 
+                            ? FontWeight.bold 
+                            : FontWeight.normal,
+                        color: date.weekday == 6 || date.weekday == 7
+                            ? Colors.red[400]
+                            : null,
+                      ),
+                    ),
+                    // 🔥 BARRE DELLE PRENOTAZIONI
+                    if (dayBookings.isNotEmpty)
+                      Expanded(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: dayBookings.length > 2 ? 2 : dayBookings.length,
+                          itemBuilder: (context, index) {
+                            final booking = dayBookings[index];
+                            final dog = _dogs.firstWhere(
+                              (d) => d['id'] == booking['dog_id'],
+                              orElse: () => {'name': '?', 'service_type': 'pensione'},
+                            );
+                            final color = dog['service_type'] == 'asilo' 
+                                ? Colors.orange 
+                                : Colors.blue;
+                            
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                              padding: const EdgeInsets.symmetric(horizontal: 2),
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.7),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                dog['name'] ?? '?',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 7,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    if (dayBookings.length > 2)
+                      Text(
+                        '+${dayBookings.length - 2}',
+                        style: TextStyle(
+                          fontSize: 8,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
           calendarStyle: CalendarStyle(
             weekendTextStyle: TextStyle(color: Colors.red[400]),
             selectedDecoration: BoxDecoration(
-              color: Colors.brown,
-              shape: BoxShape.circle,
+              color: Colors.brown.withOpacity(0.2),
+              shape: BoxShape.rectangle,
+              borderRadius: BorderRadius.circular(8),
             ),
             todayDecoration: BoxDecoration(
               color: Colors.brown[100],
-              shape: BoxShape.circle,
+              shape: BoxShape.rectangle,
+              borderRadius: BorderRadius.circular(8),
             ),
             markerDecoration: const BoxDecoration(
               color: Colors.brown,
@@ -495,8 +798,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _buildBookingsList(Map<String, List<Map<String, dynamic>>> bookingsByDay) {
-    final key = DateFormat('yyyy-MM-dd').format(_selectedDay);
+  // ============================================================
+  // 🔥 LISTA PRENOTAZIONI DEL GIORNO
+  // ============================================================
+  Widget _buildBookingsList(Map<DateTime, List<Map<String, dynamic>>> bookingsByDay) {
+    final key = DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day);
     final dayBookings = bookingsByDay[key] ?? [];
 
     if (dayBookings.isEmpty) {
@@ -519,7 +825,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   foregroundColor: Colors.white,
                 ),
                 icon: const Icon(Icons.add),
-                label: const Text('Aggiungi prenotazione'),
+                label: const Text('➕ Aggiungi prenotazione'),
               ),
           ],
         ),
@@ -550,9 +856,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
               subtitle: Text(
                 '${box['name']} • ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['start_date'] as String))} - ${DateFormat('dd/MM/yyyy').format(DateTime.parse(booking['end_date'] as String))}${booking['notes'] != null ? '\n📝 ${booking['notes']}' : ''}',
               ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                onPressed: () => _deleteBooking(booking),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 🔥 PULSANTE MODIFICA
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.blue),
+                    onPressed: () => _showEditBookingDialog(booking),
+                    tooltip: 'Modifica prenotazione',
+                  ),
+                  // PULSANTE ELIMINA
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    onPressed: () => _deleteBooking(booking),
+                  ),
+                ],
               ),
             ),
           );
