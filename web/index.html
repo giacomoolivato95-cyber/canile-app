@@ -1,67 +1,48 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    ============================================================
-    METADATI BASE
-    ============================================================
-  -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
- 
 
-  <!--
-    ============================================================
-    TITOLO E DESCRIZIONE
-    ============================================================
-  -->
   <title>Canile App</title>
   <meta name="description" content="App per la gestione del canile">
 
-  <!--
-    ============================================================
-    🔥 CONTROLLO CACHE (FORZA IL REFRESH)
-    ============================================================
-    Questi meta tag dicono al browser di NON mettere in cache
-    l'app e di ricaricare sempre l'ultima versione.
-  -->
+  <!-- Controllo cache (forza il refresh) -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 
-  <!--
-    ============================================================
-    FAVICON E ICONE PER PWA
-    ============================================================
-  -->
+  <!-- Favicon e icone PWA -->
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-
-  <!--
-    ============================================================
-    MANIFEST PER PWA
-    ============================================================
-    Permette di installare l'app sulla home del telefono.
-  -->
   <link rel="manifest" href="manifest.json">
 
+  <!-- ============================================================
+  🔥 ONESIGNAL WEB SDK (per notifiche push)
+  ============================================================ -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "fbc6943b-57cc-4f90-97ea-e96f887bd521",
+        safari_web_id: "web.onesignal.auto.3c5e9739-5d2f-4f69-94b2-78aed3043174",
+        notifyButton: {
+          enable: true,
+        },
+      });
+    });
+  </script>
+
   <!--
     ============================================================
-    SCRIPT PRINCIPALE
+    SCRIPT PRINCIPALE (Flutter)
     ============================================================
-    Flutter caricherà l'app qui.
   -->
-<script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('firebase-messaging-sw.js')
-      .then(function(registration) {
-        console.log('✅ Service Worker registrato:', registration);
-      })
-      .catch(function(error) {
-        console.log('❌ Errore registrazione Service Worker:', error);
-      });
-  }
-</script>
+  <script>
+    // Il tuo codice Flutter verrà iniettato qui
+    // (non modificare questa parte)
+  </script>
 </head>
 <body>
   <!-- Flutter rendererà l'app qui -->
